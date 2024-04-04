@@ -17,6 +17,7 @@ public:
    * @param height: The height of the 2D lattice, a positive integer >= 2.
    */
   IsingMCMC2DBase(std::uint64_t seed, int width, int height);
+  virtual ~IsingMCMC2DBase() = default;
 
   int get_width() const { return m_width; }
   int get_height() const { return m_height; }
@@ -207,6 +208,110 @@ private:
         int col_i_adj = 4 * i + shift;
         std::size_t cur_frustration = frustration & 0xf;
         frustration >>= 4;
+        std::uint64_t rnd = m_rng();
+        std::uint64_t threshold = m_thresholds[cur_frustration];
+        row ^= (static_cast<std::uint64_t>(rnd < threshold) << col_i_adj);
+      }
+      row &= m_mask;
+      row |= ((row & 2) << m_width) | ((row >> m_width) & 1);
+    }
+    m_state[row_i] = row;
+  }
+};
+
+class IsingNNNMCMC : public IsingMCMC2DBase {
+public:
+  /**
+   * Constructor to initialize the 2D Ising model for MCMC simulation.
+   *
+   * @param seed: The seed for random number generation, used in the MCMC steps.
+   * @param width: The width of the 2D lattice, between 2 and 62 (inclusive).
+   * @param height: The height of the 2D lattice, a positive integer >= 2.
+   * @param beta: The inverse temperature parameter of the Ising model.
+   * @param jh: The coupling parameter for horizontal couplings.
+   * @param jv: The coupling parameter for vertical couplings.
+   * @param jp: The coupling parameter for diagonal couplings
+   *   in ++ and -- directions.
+   * @param jm: The coupling parameter for diagonal couplings
+   *   in +- and -+ directions.
+   * @param h: The external magnetic field.
+   */
+  IsingNNNMCMC(std::uint64_t seed, int width, int height, double beta,
+               double jh, double jv, double jp, double jm, double h)
+      : IsingMCMC2DBase(seed, width, height), m_beta(beta), m_jh(jh), m_jv(jv),
+        m_jp(jp), m_jm(jm), m_h(h) {
+    _precompute_thresholds();
+  }
+  double get_beta() const { return m_beta; }
+  double get_jh() const { return m_jh; }
+  double get_jv() const { return m_jv; }
+  double get_jp() const { return m_jp; }
+  double get_jm() const { return m_jm; }
+  double get_h() const { return m_h; }
+
+  /**
+   * Adjusts the parameters of the Ising model without changing the state.
+   *
+   * @param beta: The new inverse temperature parameter.
+   * @param jh: The coupling parameter for horizontal couplings.
+   * @param jv: The coupling parameter for vertical couplings.
+   * @param jp: The coupling parameter for diagonal couplings
+   *   in ++ and -- directions.
+   * @param jm: The coupling parameter for diagonal couplings
+   *   in +- and -+ directions.
+   * @param h: The external magnetic field.
+   */
+  void adjust_parameters(double beta, double jh, double jv, double jp,
+                         double jm, double h);
+
+  using IsingMCMC2DBase::step;
+
+  /**
+   * Executes one step of the MCMC simulation.
+   */
+  virtual void step();
+
+  /**
+   * Executes an alternative step: flipping (or not) the whole lattice.
+   */
+  void step_flip();
+
+protected:
+  // Data
+  double m_beta, m_jh, m_jv, m_jp, m_jm, m_h; // Hamiltonian parameters
+  std::uint64_t m_thresholds[512]; // Precomputed thresholds for MCMC acceptance
+
+private:
+  // Helper functions
+  void _precompute_thresholds();
+  void _update_row(int row_i) {
+    const std::uint64_t row_up = m_state[row_i - 1];
+    std::uint64_t row = m_state[row_i];
+    const std::uint64_t row_down = m_state[row_i + 1];
+    for (int shift = 1; shift < 10; ++shift) {
+      constexpr std::uint64_t int9_mask = 0x8040201008040201ULL;
+      // Below comments are (horizontal_offset, vertical_offset):
+      std::uint64_t cur_row = (row >> shift) & int9_mask; // 00
+      std::uint64_t frustration = cur_row;
+      std::uint64_t cur_h0 = (row >> (shift - 1)) & int9_mask; // -0
+      std::uint64_t cur_h1 = (row >> (shift + 1)) & int9_mask; // +0
+      frustration |= ((cur_row ^ cur_h0) + (cur_row ^ cur_h1)) << 7;
+      std::uint64_t cur_v0 = (row_up >> shift) & int9_mask;   // 0-
+      std::uint64_t cur_v1 = (row_down >> shift) & int9_mask; // 0+
+      frustration |= ((cur_row ^ cur_v0) + (cur_row ^ cur_v1)) << 5;
+      std::uint64_t cur_p0 = (row_up >> (shift - 1)) & int9_mask;   // --
+      std::uint64_t cur_p1 = (row_down >> (shift + 1)) & int9_mask; // ++
+      frustration |= ((cur_row ^ cur_p0) + (cur_row ^ cur_p1)) << 3;
+      std::uint64_t cur_m0 = (row_up >> (shift + 1)) & int9_mask;   // +-
+      std::uint64_t cur_m1 = (row_down >> (shift - 1)) & int9_mask; // -+
+      frustration |= ((cur_row ^ cur_m0) + (cur_row ^ cur_m1)) << 1;
+      // col_i = 9 * i + shift - 1 < m_width, i.e. 9 * i <= m_width - shift,
+      int imax = (m_width - shift + 9) / 9;
+      for (int i = 0; i < imax; ++i) {
+        // col_i + 1 --- index of the current bit we are processing.
+        int col_i_adj = 9 * i + shift;
+        std::size_t cur_frustration = frustration & 0x1ff;
+        frustration >>= 9;
         std::uint64_t rnd = m_rng();
         std::uint64_t threshold = m_thresholds[cur_frustration];
         row ^= (static_cast<std::uint64_t>(rnd < threshold) << col_i_adj);

@@ -3,40 +3,19 @@ import ctypes
 import numpy as np
 import os
 import sys
+import functools
 
 from numpy.ctypeslib import ndpointer
 
 ISING_2D_BETA_CRITICAL = np.log(1 + np.sqrt(2)) / 2
 
-class IsingMCMC2D:
-    BETA_CRITICAL = ISING_2D_BETA_CRITICAL
-    def __init__(self, seed=1, width=20, height=20,
-                 beta=ISING_2D_BETA_CRITICAL, h=0.0):
-        """
-        Initialize the 2D Ising model MCMC sampler.
-
-        Implemented in C++.
-
-        Args:
-            seed: The seed for random number generation, used in the MCMC steps.
-            width: The width of the 2D lattice, between 2 and 62 (inclusive).
-            height: The height of the 2D lattice, a positive integer >= 2.
-            beta: The inverse temperature parameter of the Ising model.
-            h: The external magnetic field.
-        """
+class IsingMCMC2DBase:
+    def __init__(self):
         self._lib = None
         self._lib = self._get_lib()
 
-        _mcmc = self._lib.create_ising_mcmc2D(
-            ctypes.c_uint64(seed),
-            ctypes.c_int(width),
-            ctypes.c_int(height),
-            ctypes.c_double(beta),
-            ctypes.c_double(h)
-        )
-        self._mcmc = ctypes.c_void_p(_mcmc)
-
     @staticmethod
+    @functools.lru_cache(maxsize=1)
     def _get_lib():
         extension = {
             "win32": ".dll",
@@ -49,6 +28,43 @@ class IsingMCMC2D:
         lib = ctypes.CDLL(lib_path)
 
         # Define functions here.
+        # Base:
+        lib.delete_ising_mcmc2D_base.argtypes = [ctypes.c_void_p]
+        lib.delete_ising_mcmc2D_base.restype = None
+
+        lib.ising_mcmc2D_base_get_state.argtypes = [
+            ctypes.c_void_p,
+            ndpointer(ctypes.c_uint64, flags="C_CONTIGUOUS"),
+            ctypes.c_size_t
+        ]
+        lib.ising_mcmc2D_base_get_state.restype = None
+
+        lib.ising_mcmc2D_base_produce_shifted_state.argtypes = [
+            ctypes.c_void_p,
+            ndpointer(ctypes.c_uint64, flags="C_CONTIGUOUS"),
+            ctypes.c_size_t
+        ]
+        lib.ising_mcmc2D_base_produce_shifted_state.restype = None
+
+        lib.ising_mcmc2D_base_reset.argtypes = [ctypes.c_void_p]
+        lib.ising_mcmc2D_base_reset.restype = None
+
+        lib.ising_mcmc2D_base_step.argtypes = [ctypes.c_void_p, ctypes.c_int]
+        lib.ising_mcmc2D_base_step.restype = None
+
+        lib.ising_mcmc2D_base_get_width.argtypes = [ctypes.c_void_p]
+        lib.ising_mcmc2D_base_get_width.restype = ctypes.c_int
+
+        lib.ising_mcmc2D_base_get_height.argtypes = [ctypes.c_void_p]
+        lib.ising_mcmc2D_base_get_height.restype = ctypes.c_int
+
+        lib.ising_mcmc2D_base_get_magnetization.argtypes = [ctypes.c_void_p]
+        lib.ising_mcmc2D_base_get_magnetization.restype = ctypes.c_double
+
+        lib.ising_mcmc2D_base_get_energy0.argtypes = [ctypes.c_void_p]
+        lib.ising_mcmc2D_base_get_energy0.restype = ctypes.c_int
+
+        # MCMC 2D:
         lib.create_ising_mcmc2D.argtypes = [
             ctypes.c_uint64,
             ctypes.c_int,
@@ -58,55 +74,20 @@ class IsingMCMC2D:
         ]
         lib.create_ising_mcmc2D.restype = ctypes.c_void_p
 
-        lib.delete_ising_mcmc2D.argtypes = [ctypes.c_void_p]
-        lib.delete_ising_mcmc2D.restype = None
-
-        lib.ising_mcmc2D_get_state.argtypes = [
-            ctypes.c_void_p,
-            ndpointer(ctypes.c_uint64, flags="C_CONTIGUOUS"),
-            ctypes.c_size_t
-        ]
-        lib.ising_mcmc2D_get_state.restype = None
-
-        lib.ising_mcmc2D_produce_shifted_state.argtypes = [
-            ctypes.c_void_p,
-            ndpointer(ctypes.c_uint64, flags="C_CONTIGUOUS"),
-            ctypes.c_size_t
-        ]
-        lib.ising_mcmc2D_produce_shifted_state.restype = None
-
-        lib.ising_mcmc2D_reset.argtypes = [ctypes.c_void_p]
-        lib.ising_mcmc2D_reset.restype = None
-
         lib.ising_mcmc2D_adjust_parameters.argtypes = [
             ctypes.c_void_p,
             ctypes.c_double,
             ctypes.c_double]
         lib.ising_mcmc2D_adjust_parameters.restype = None
 
-        lib.ising_mcmc2D_step.argtypes = [ctypes.c_void_p, ctypes.c_int]
-        lib.ising_mcmc2D_step.restype = None
-
         lib.ising_mcmc2D_step_flip.argtypes = [ctypes.c_void_p]
         lib.ising_mcmc2D_step_flip.restype = None
-
-        lib.ising_mcmc2D_get_width.argtypes = [ctypes.c_void_p]
-        lib.ising_mcmc2D_get_width.restype = ctypes.c_int
-
-        lib.ising_mcmc2D_get_height.argtypes = [ctypes.c_void_p]
-        lib.ising_mcmc2D_get_height.restype = ctypes.c_int
 
         lib.ising_mcmc2D_get_beta.argtypes = [ctypes.c_void_p]
         lib.ising_mcmc2D_get_beta.restype = ctypes.c_double
 
         lib.ising_mcmc2D_get_h.argtypes = [ctypes.c_void_p]
         lib.ising_mcmc2D_get_h.restype = ctypes.c_double
-
-        lib.ising_mcmc2D_get_magnetization.argtypes = [ctypes.c_void_p]
-        lib.ising_mcmc2D_get_magnetization.restype = ctypes.c_double
-
-        lib.ising_mcmc2D_get_energy0.argtypes = [ctypes.c_void_p]
-        lib.ising_mcmc2D_get_energy0.restype = ctypes.c_int
 
         lib.ising_mcmc2D_step_combined_ef.argtypes = [
             ctypes.c_void_p,
@@ -116,14 +97,51 @@ class IsingMCMC2D:
             ctypes.c_bool]
         lib.ising_mcmc2D_step_combined_ef.restype = None
 
-        # TODO: Add the remaining functions from C++ API to lib
+        # NNN MCMC:
+        lib.create_ising_nnn_mcmc.argtypes = [
+            ctypes.c_uint64,  # std::uint64_t seed
+            ctypes.c_int,     # int width
+            ctypes.c_int,     # int height
+            ctypes.c_double,  # double beta
+            ctypes.c_double,  # double jh
+            ctypes.c_double,  # double jv
+            ctypes.c_double,  # double jp
+            ctypes.c_double,  # double jm
+            ctypes.c_double   # double h
+        ]
+        lib.create_ising_nnn_mcmc.restype = ctypes.c_void_p
+
+        lib.ising_nnn_mcmc_adjust_parameters.argtypes = [
+            ctypes.c_void_p,  # classifim_bench::IsingNNNMCMC *mcmc
+            ctypes.c_double,  # double beta
+            ctypes.c_double,  # double jh
+            ctypes.c_double,  # double jv
+            ctypes.c_double,  # double jp
+            ctypes.c_double,  # double jm
+            ctypes.c_double   # double h
+        ]
+        lib.ising_nnn_mcmc_adjust_parameters.restype = None
+
+        lib.ising_nnn_mcmc_step_flip.argtypes = [
+            ctypes.c_void_p,  # classifim_bench::IsingNNNMCMC *mcmc
+        ]
+        lib.ising_nnn_mcmc_step_flip.restype = None
+
+        lib.ising_nnn_mcmc_get_beta.argtypes = [
+            ctypes.c_void_p,  # const classifim_bench::IsingNNNMCMC *mcmc
+        ]
+        lib.ising_nnn_mcmc_get_beta.restype = ctypes.c_int
+
+        lib.ising_nnn_mcmc_get_h.argtypes = [
+            ctypes.c_void_p,  # const classifim_bench::IsingNNNMCMC *mcmc
+        ]
+        lib.ising_nnn_mcmc_get_h.restype = ctypes.c_double
 
         return lib
 
     def __del__(self):
         if hasattr(self, '_mcmc') and self._mcmc is not None:
-            self._lib.delete_ising_mcmc2D(self._mcmc)
-
+            self._lib.delete_ising_mcmc2D_base(self._mcmc)
 
     def get_state(self, out=None, shifted=False):
         height = self.get_height()
@@ -144,9 +162,9 @@ class IsingMCMC2D:
             out = np.empty(height, dtype=np.uint64)
 
         if shifted:
-            f = self._lib.ising_mcmc2D_produce_shifted_state
+            f = self._lib.ising_mcmc2D_base_produce_shifted_state
         else:
-            f = self._lib.ising_mcmc2D_get_state
+            f = self._lib.ising_mcmc2D_base_get_state
         f(self._mcmc, out, ctypes.c_size_t(height))
 
         return out
@@ -157,44 +175,83 @@ class IsingMCMC2D:
         Also, the `out` argument is not returned.
         """
         if shifted:
-            f = self._lib.ising_mcmc2D_produce_shifted_state
+            f = self._lib.ising_mcmc2D_base_produce_shifted_state
         else:
-            f = self._lib.ising_mcmc2D_get_state
+            f = self._lib.ising_mcmc2D_base_get_state
         f(self._mcmc, out, ctypes.c_size_t(out.shape[0]))
 
     def reset(self):
-        self._lib.ising_mcmc2D_reset(self._mcmc)
+        self._lib.ising_mcmc2D_base_reset(self._mcmc)
+
+    def step(self, n_steps=1):
+        self._lib.ising_mcmc2D_base_step(self._mcmc, ctypes.c_int(n_steps))
+
+    def get_width(self):
+        return self._lib.ising_mcmc2D_base_get_width(self._mcmc)
+
+    def get_height(self):
+        return self._lib.ising_mcmc2D_base_get_height(self._mcmc)
+
+    def get_magnetization(self):
+        return self._lib.ising_mcmc2D_base_get_magnetization(self._mcmc)
+
+    def get_energy0(self):
+        """
+        Returns the energy of the current state, assuming h=0.
+        """
+        return self._lib.ising_mcmc2D_base_get_energy0(self._mcmc)
+
+    @staticmethod
+    def unpack_state_to_matrix(state, width):
+        """
+        Unpack the state vector to a 2D matrix.
+
+        Args:
+            state: The state vector of the 2D Ising model.
+            width: The width of the 2D lattice.
+        """
+        jj = np.arange(width, dtype=np.uint64)
+        return 1 - 2 * ((state[:, None] >> jj[None, :]) & 1).astype(np.int64)
+
+class IsingMCMC2D(IsingMCMC2DBase):
+    BETA_CRITICAL = ISING_2D_BETA_CRITICAL
+    def __init__(self, seed=1, width=20, height=20,
+                 beta=ISING_2D_BETA_CRITICAL, h=0.0):
+        """
+        Initialize the 2D Ising model MCMC sampler.
+
+        Implemented in C++.
+
+        Args:
+            seed: The seed for random number generation, used in the MCMC steps.
+            width: The width of the 2D lattice, between 2 and 62 (inclusive).
+            height: The height of the 2D lattice, a positive integer >= 2.
+            beta: The inverse temperature parameter of the Ising model.
+            h: The external magnetic field.
+        """
+        super().__init__()
+
+        _mcmc = self._lib.create_ising_mcmc2D(
+            ctypes.c_uint64(seed),
+            ctypes.c_int(width),
+            ctypes.c_int(height),
+            ctypes.c_double(beta),
+            ctypes.c_double(h)
+        )
+        self._mcmc = ctypes.c_void_p(_mcmc)
 
     def adjust_parameters(self, beta=ISING_2D_BETA_CRITICAL, h=0.0):
         self._lib.ising_mcmc2D_adjust_parameters(
                 self._mcmc, ctypes.c_double(beta), ctypes.c_double(h))
 
-    def step(self, n_steps=1):
-        self._lib.ising_mcmc2D_step(self._mcmc, ctypes.c_int(n_steps))
-
     def step_flip(self):
         self._lib.ising_mcmc2D_step_flip(self._mcmc)
-
-    def get_width(self):
-        return self._lib.ising_mcmc2D_get_width(self._mcmc)
-
-    def get_height(self):
-        return self._lib.ising_mcmc2D_get_height(self._mcmc)
 
     def get_beta(self):
         return self._lib.ising_mcmc2D_get_beta(self._mcmc)
 
     def get_h(self):
         return self._lib.ising_mcmc2D_get_h(self._mcmc)
-
-    def get_magnetization(self):
-        return self._lib.ising_mcmc2D_get_magnetization(self._mcmc)
-
-    def get_energy0(self):
-        """
-        Returns the energy of the current state, assuming h=0.
-        """
-        return self._lib.ising_mcmc2D_get_energy0(self._mcmc)
 
     def get_energy(self, h):
         """
@@ -230,18 +287,6 @@ class IsingMCMC2D:
             ctypes.c_int(energies_out.shape[0]),
             energies_out, ctypes.c_bool(flip))
 
-    @staticmethod
-    def unpack_state_to_matrix(state, width):
-        """
-        Unpack the state vector to a 2D matrix.
-
-        Args:
-            state: The state vector of the 2D Ising model.
-            width: The width of the 2D lattice.
-        """
-        jj = np.arange(width, dtype=np.uint64)
-        return 1 - 2 * ((state[:, None] >> jj[None, :]) & 1).astype(np.int64)
-
     @classmethod
     def difficulty_factor(cls, t):
         """
@@ -255,6 +300,63 @@ class IsingMCMC2D:
 
     def cur_difficulty_factor(self):
         return self.difficulty_factor(1.0 / self.get_beta())
+
+class IsingNNNMCMC(IsingMCMC2DBase):
+    # create_ising_nnn_mcmc(std::uint64_t seed, int width, int height, double beta,
+    #                   double jh, double jv, double jp, double jm, double h) {
+    def __init__(self, seed=1, width=20, height=20,
+                 beta=ISING_2D_BETA_CRITICAL, jh=1.0, jv=1.0, jp=0.0, jm=0.0, h=0.0):
+        """
+        Initialize the MCMC sampler for 2D Ising model with NNN interactions.
+
+        Implemented in C++.
+
+        Args:
+            seed: The seed for random number generation, used in the MCMC steps.
+            width: The width of the 2D lattice, between 2 and 62 (inclusive).
+            height: The height of the 2D lattice, a positive integer >= 2.
+            beta: The inverse temperature parameter of the Ising model.
+            jh: The coupling strength for the horizontal interactions.
+            jv: The coupling strength for the vertical interactions.
+            jp: The coupling strength for the positive diagonal interactions.
+            jm: The coupling strength for the negative diagonal interactions.
+            h: The external magnetic field.
+        """
+        super().__init__()
+
+        _mcmc = self._lib.create_ising_nnn_mcmc(
+            ctypes.c_uint64(seed),
+            ctypes.c_int(width),
+            ctypes.c_int(height),
+            ctypes.c_double(beta),
+            ctypes.c_double(jh),
+            ctypes.c_double(jv),
+            ctypes.c_double(jp),
+            ctypes.c_double(jm),
+            ctypes.c_double(h)
+        )
+        self._mcmc = ctypes.c_void_p(_mcmc)
+
+    def adjust_parameters(
+            self, beta=ISING_2D_BETA_CRITICAL,
+            jh=1.0, jv=1.0, jp=0.0, jm=0.0, h=0.0):
+        self._lib.ising_nnn_mcmc_adjust_parameters(
+            self._mcmc,
+            ctypes.c_double(beta),
+            ctypes.c_double(jh),
+            ctypes.c_double(jv),
+            ctypes.c_double(jp),
+            ctypes.c_double(jm),
+            ctypes.c_double(h))
+
+    def step_flip(self):
+        self._lib.ising_nnn_mcmc_step_flip(self._mcmc)
+
+    def get_beta(self):
+        return self._lib.ising_nnn_mcmc_get_beta(self._mcmc)
+
+    def get_h(self):
+        return self._lib.ising_nnn_mcmc_get_h(self._mcmc)
 
 def estimate_fim(ts, energies, cutoff_t=0.5675):
     """

@@ -7,6 +7,49 @@
 #include <vector>
 
 namespace classifim_bench {
+namespace {
+// Helper functions
+void _basic_step_flip(int width, int height, double beta_h,
+                      std::mt19937_64 &rng, std::uint64_t *state) {
+  // Decide whether to flip the entire lattice or not.
+  double p_accept;
+  if (beta_h == 0) {
+    p_accept = 0.5;
+  } else {
+    // Calculate total magnetization
+    int total_magnetization = 0;
+    for (int row_i = 1; row_i <= height; ++row_i) {
+      total_magnetization +=
+          __builtin_popcountll(state[row_i] & ((1ull << width) - 1));
+    }
+
+    // Calculate energy change due to flipping
+    double delta_energy =
+        2 * beta_h * (2 * total_magnetization - width * height);
+
+    // Calculate probability of flipping
+    double p_ratio = exp(-delta_energy);
+    // The choice of acceptance probability function $f$
+    // has to satisfy $f(r) / f(1/r) = r$ and $f(r) \leq 1.0$.
+    // * Metropolis: $f(r) = min(1, r)$.
+    // * Barker: $f(r) = r / (1 + r)$.
+    p_accept = p_ratio / (1 + p_ratio);
+  }
+
+  // Generate a random number between 0 and 1
+  std::uniform_real_distribution<double> distribution(0.0, 1.0);
+  double rnd = distribution(rng);
+
+  // Flip the lattice if the random number is less than the flip probability
+  if (rnd < p_accept) {
+    std::uint64_t mask2 = (1ull << (width + 2)) - 1;
+    for (int row_i = height + 1; row_i >= 0; --row_i) {
+      state[row_i] = ~state[row_i] & mask2;
+    }
+  }
+}
+} // namespace
+
 // class IsingMCMC2DBase:
 IsingMCMC2DBase::IsingMCMC2DBase(std::uint64_t seed, int width, int height)
     : m_width(width), m_height(height), m_rng(seed),
@@ -78,6 +121,7 @@ void IsingMCMC2D::_precompute_thresholds() {
   //   expression
   // note: implicit use of 'this' pointer is only allowed within the
   //   evaluation of a call to a 'constexpr' member function
+  // decltype(m_rng)::max(); (?)
 
   // Precompute the thesholds for the MCMC acceptance.
   // m_threshold[2 * j + b] / 2^64 represents the probability
@@ -124,42 +168,80 @@ void IsingMCMC2D::step() {
 }
 
 void IsingMCMC2D::step_flip() {
-  // Decide whether to flip the entire lattice or not.
+  _basic_step_flip(m_width, m_height, m_beta * m_h, m_rng, m_state.data());
+}
 
-  double p_accept;
-  if (m_h == 0) {
-    p_accept = 0.5;
-  } else {
-    // Calculate total magnetization
-    int total_magnetization = 0;
-    for (int row_i = 1; row_i <= m_height; ++row_i) {
-      total_magnetization += __builtin_popcountll(m_state[row_i] & m_mask);
+// class IsingNNNMCMC:
+void IsingNNNMCMC::_precompute_thresholds() {
+  constexpr std::uint64_t m_rng_max = decltype(m_rng)::max();
+  double jh = m_beta * m_jh;
+  double jv = m_beta * m_jv;
+  double jp = m_beta * m_jp;
+  double jm = m_beta * m_jm;
+  double h = m_beta * m_h;
+  // Consider a single coupling between za = (-1)**xa and zb = (-1)**xb and the
+  // coupling strength J. Its energy is
+  // -J * za * zb = J * (1 - 2 * (xa^xb)).
+  // Magnetic field can be considered as a coupling
+  // with a fixed spin zb = 1 = (-1)**0.
+  // Energy before the flip:
+  // E0 = \sum_{dir} J_{dir} * (1 - 2 * n_{dir}),
+  // where n_{dir} is the number of frustrated couplings.
+  // Energy after the flip is E1 = -E0.
+  // delta_E = E1 - E0 = -2 * E0 = \sum_{dir} J_{dir} * (4 * n_{dir} - 2).
+  for (int n_jh = 0; n_jh <= 2; ++n_jh) {
+    double delta_e0 = jh * (4 * n_jh - 2);
+    int idx0 = n_jh << 7;
+    for (int n_jv = 0; n_jv <= 2; ++n_jv) {
+      double delta_e1 = delta_e0 + jv * (4 * n_jv - 2);
+      int idx1 = idx0 + (n_jv << 5);
+      for (int n_jp = 0; n_jp <= 2; ++n_jp) {
+        double delta_e2 = delta_e1 + jp * (4 * n_jp - 2);
+        int idx2 = idx1 + (n_jp << 3);
+        for (int n_jm = 0; n_jm <= 2; ++n_jm) {
+          double delta_e3 = delta_e2 + jm * (4 * n_jm - 2);
+          int idx3 = idx2 + (n_jm << 1);
+          for (int n_h = 0; n_h <= 1; ++n_h) {
+            double delta_e = delta_e3 + h * (2 * n_h - 1);
+            int idx = idx3 + n_h;
+            double p_accept = std::exp(-delta_e);
+            if (p_accept >= 1.0) {
+              m_thresholds[idx] = m_rng_max;
+            } else {
+              m_thresholds[idx] = static_cast<std::uint64_t>(
+                  p_accept * static_cast<double>(m_rng_max));
+            }
+          }
+        }
+      }
     }
-
-    // Calculate energy change due to flipping
-    double delta_energy =
-        2 * m_h * (2 * total_magnetization - m_width * m_height);
-
-    // Calculate probability of flipping
-    double p_ratio = exp(-m_beta * delta_energy);
-    // The choice of acceptance probability function $f$
-    // has to satisfy $f(r) / f(1/r) = r$ and $f(r) \leq 1.0$.
-    // * Metropolis: $f(r) = min(1, r)$.
-    // * Barker: $f(r) = r / (1 + r)$.
-    p_accept = p_ratio / (1 + p_ratio);
   }
+}
 
-  // Generate a random number between 0 and 1
-  std::uniform_real_distribution<double> distribution(0.0, 1.0);
-  double rnd = distribution(m_rng);
+void IsingNNNMCMC::adjust_parameters(double beta, double jh, double jv,
+                                     double jp, double jm, double h) {
+  m_beta = beta;
+  m_jh = jh;
+  m_jv = jv;
+  m_jp = jp;
+  m_jm = jm;
+  m_h = h;
+  _precompute_thresholds();
+}
 
-  // Flip the lattice if the random number is less than the flip probability
-  if (rnd < p_accept) {
-    std::uint64_t mask2 = (1ull << (m_width + 2)) - 1;
-    for (int row_i = m_height + 1; row_i >= 0; --row_i) {
-      m_state[row_i] = ~m_state[row_i] & mask2;
-    }
+void IsingNNNMCMC::step() {
+  // Perform one step of the MCMC simulation.
+  // The algorithm is the Metropolis-Hastings algorithm.
+  _update_row(1);
+  m_state[m_height + 1] = m_state[1];
+  for (int row_i = 2; row_i <= m_height; ++row_i) {
+    _update_row(row_i);
   }
+  m_state[0] = m_state[m_height];
+}
+
+void IsingNNNMCMC::step_flip() {
+  _basic_step_flip(m_width, m_height, m_beta * m_h, m_rng, m_state.data());
 }
 
 } // namespace classifim_bench
