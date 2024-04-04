@@ -1,4 +1,5 @@
-cmake_minimum_required(VERSION 3.14)
+# Scikit-build requires CMake 3.15
+cmake_minimum_required(VERSION 3.15)
 project(classifim_bench)
 
 # Example usages:
