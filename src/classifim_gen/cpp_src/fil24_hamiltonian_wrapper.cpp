@@ -18,7 +18,7 @@ classifim_bench::Fil24Orbits *get_orbits(int nsites) {
 } // namespace
 
 classifim_bench::Fil1DFamily *create_fil1d_family(int nsites, int *edge_dirs,
-                                                 int num_edge_dirs) {
+                                                  int num_edge_dirs) {
   classifim_bench::Fil24Orbits *orbits = get_orbits(nsites);
   classifim_bench::Fil1DFamily *res = new classifim_bench::Fil1DFamily(
       *orbits, std::vector<int>(edge_dirs, edge_dirs + num_edge_dirs));
@@ -56,10 +56,11 @@ void fil1d_family_get_op_x(classifim_bench::Fil1DFamily *fil1d_family,
                            const int **col_idxs, const double **data,
                            int *nnz) {
   auto &op_x = fil1d_family->get_op_x();
-  if (op_x.row_ptrs.back() != op_x.col_idxs.size()) {
+  std::size_t num_items = static_cast<std::size_t>(op_x.row_ptrs.back());
+  if (num_items != op_x.col_idxs.size()) {
     throw std::runtime_error("row_ptrs.back() != col_idxs.size()");
   }
-  if (op_x.row_ptrs.back() != op_x.data.size()) {
+  if (num_items != op_x.data.size()) {
     throw std::runtime_error("row_ptrs.back() != data.size()");
   }
   *row_ptrs = op_x.row_ptrs.data();
