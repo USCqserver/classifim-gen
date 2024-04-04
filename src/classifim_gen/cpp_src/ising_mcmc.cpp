@@ -1,15 +1,15 @@
 #include "ising_mcmc.h"
 
+#include <cassert>
 #include <random>
 #include <span>
 #include <stdexcept>
 #include <vector>
-#include <cassert>
 
 namespace classifim_bench {
-IsingMCMC2D::IsingMCMC2D(std::uint64_t seed, int width, int height, double beta,
-                         double h)
-    : m_width(width), m_height(height), m_beta(beta), m_h(h), m_rng(seed),
+// class IsingMCMC2DBase:
+IsingMCMC2DBase::IsingMCMC2DBase(std::uint64_t seed, int width, int height)
+    : m_width(width), m_height(height), m_rng(seed),
       m_mask((1ull << (width + 1)) - 2) {
   // Validate the width and height
   if (width < 2 || width > 62) {
@@ -26,9 +26,51 @@ IsingMCMC2D::IsingMCMC2D(std::uint64_t seed, int width, int height, double beta,
 
   m_state.resize(m_height + 2);
   reset();
-  _precompute_thresholds();
 }
 
+void IsingMCMC2DBase::get_state(std::span<std::uint64_t> state) const {
+  if (state.size() != static_cast<std::size_t>(m_height)) {
+    throw std::invalid_argument("state must have length equal to height.");
+  }
+
+  for (int i = 0; i < m_height; ++i) {
+    state[i] = (m_state[i + 1] & m_mask) >> 1;
+  }
+}
+
+void IsingMCMC2DBase::produce_shifted_state(std::span<std::uint64_t> state) {
+  if (state.size() != static_cast<std::size_t>(m_height)) {
+    throw std::invalid_argument("state must have length equal to height.");
+  }
+
+  // Generate random offsets for rows and columns
+  std::uniform_int_distribution<int> dist_height(0, m_height - 1);
+  std::uniform_int_distribution<int> dist_width(0, m_width - 1);
+  int row_offset = dist_height(m_rng);
+  int col_offset = dist_width(m_rng);
+  int col_offset2 = m_width - col_offset;
+  std::uint64_t mask = (1ull << m_width) - 1ull;
+
+  for (int i = 0; i < m_height; ++i) {
+    int in_rowi = (i + row_offset) % m_height;
+    std::uint64_t row = m_state[in_rowi] & mask;
+    row = ((row >> col_offset) | (row << col_offset2)) & mask;
+
+    state[i] = row;
+  }
+}
+
+void IsingMCMC2DBase::reset() {
+  // Initialize the 2D lattice to a random state.
+  // Bit value 0 means Z = +1, bit value 1 means Z = -1.
+  std::uniform_int_distribution<std::uint64_t> dist(0, (1ull << m_width) - 1);
+  for (int i = 1; i <= m_height; ++i) {
+    m_state[i] = dist(m_rng) << 1;
+  }
+  _fix_boundary();
+}
+
+// class IsingMCMC2D:
 void IsingMCMC2D::_precompute_thresholds() {
   constexpr std::uint64_t m_rng_max = std::mt19937_64::max();
   // m_rng.max(); TODO:9: figure out why we can't refer to type of m_rng here:
@@ -64,52 +106,10 @@ void IsingMCMC2D::_precompute_thresholds() {
   }
 }
 
-void IsingMCMC2D::reset() {
-  // Initialize the 2D lattice to a random state.
-  // Bit value 0 means Z = +1, bit value 1 means Z = -1.
-  std::uniform_int_distribution<std::uint64_t> dist(0, (1ull << m_width) - 1);
-  for (int i = 1; i <= m_height; ++i) {
-    m_state[i] = dist(m_rng) << 1;
-  }
-  _fix_boundary();
-}
-
 void IsingMCMC2D::adjust_parameters(double beta, double h) {
   m_beta = beta;
   m_h = h;
   _precompute_thresholds();
-}
-
-void IsingMCMC2D::get_state(std::span<std::uint64_t> state) const {
-  if (state.size() != static_cast<std::size_t>(m_height)) {
-    throw std::invalid_argument("state must have length equal to height.");
-  }
-
-  for (int i = 0; i < m_height; ++i) {
-    state[i] = (m_state[i + 1] & m_mask) >> 1;
-  }
-}
-
-void IsingMCMC2D::produce_shifted_state(std::span<std::uint64_t> state) {
-  if (state.size() != static_cast<std::size_t>(m_height)) {
-    throw std::invalid_argument("state must have length equal to height.");
-  }
-
-  // Generate random offsets for rows and columns
-  std::uniform_int_distribution<int> dist_height(0, m_height - 1);
-  std::uniform_int_distribution<int> dist_width(0, m_width - 1);
-  int row_offset = dist_height(m_rng);
-  int col_offset = dist_width(m_rng);
-  int col_offset2 = m_width - col_offset;
-  std::uint64_t mask = (1ull << m_width) - 1ull;
-
-  for (int i = 0; i < m_height; ++i) {
-    int in_rowi = (i + row_offset) % m_height;
-    std::uint64_t row = m_state[in_rowi] & mask;
-    row = ((row >> col_offset) | (row << col_offset2)) & mask;
-
-    state[i] = row;
-  }
 }
 
 void IsingMCMC2D::step() {
@@ -137,8 +137,8 @@ void IsingMCMC2D::step_flip() {
     }
 
     // Calculate energy change due to flipping
-    double delta_energy = 2 * m_h * (
-        2 * total_magnetization - m_width * m_height);
+    double delta_energy =
+        2 * m_h * (2 * total_magnetization - m_width * m_height);
 
     // Calculate probability of flipping
     double p_ratio = exp(-m_beta * delta_energy);

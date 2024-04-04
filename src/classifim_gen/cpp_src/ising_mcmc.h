@@ -7,18 +7,19 @@
 #include <vector>
 
 namespace classifim_bench {
-class IsingMCMC2D {
+class IsingMCMC2DBase {
 public:
   /**
-   * Constructor to initialize the 2D Ising model for MCMC simulation.
+   * Constructor to initialize the 2D Ising model's base.
    *
    * @param seed: The seed for random number generation, used in the MCMC steps.
    * @param width: The width of the 2D lattice, between 2 and 62 (inclusive).
    * @param height: The height of the 2D lattice, a positive integer >= 2.
-   * @param beta: The inverse temperature parameter of the Ising model.
-   * @param h: The external magnetic field.
    */
-  IsingMCMC2D(std::uint64_t seed, int width, int height, double beta, double h);
+  IsingMCMC2DBase(std::uint64_t seed, int width, int height);
+
+  int get_width() const { return m_width; }
+  int get_height() const { return m_height; }
 
   /**
    * Fetches the current state of the Ising model lattice.
@@ -51,18 +52,7 @@ public:
    */
   void reset();
 
-  /**
-   * Adjusts the parameters of the Ising model without changing the state.
-   *
-   * @param beta: The new inverse temperature parameter.
-   * @param h: The new external magnetic field.
-   */
-  void adjust_parameters(double beta, double h);
-
-  /**
-   * Executes one step of the MCMC simulation.
-   */
-  void step();
+  virtual void step() = 0;
 
   /**
    * Executes `n_steps` steps of the MCMC simulation.
@@ -74,22 +64,7 @@ public:
     }
   }
 
-  /**
-   * Executes an alternative step: flipping (or not) the whole lattice.
-   */
-  void step_flip();
-
-  /**
-   * Executes an alternative step: rotating the
-   * lattice by random offsets in both directions.
-   */
-  // void step_rotate();
-
-  int get_width() const { return m_width; }
-  int get_height() const { return m_height; }
-  double get_beta() const { return m_beta; }
-  double get_h() const { return m_h; }
-  int get_int_magnetization() const{
+  int get_int_magnetization() const {
     int res = 0;
     for (int i = 1; i <= m_height; ++i) {
       std::uint64_t row = m_state[i] & m_mask;
@@ -100,16 +75,25 @@ public:
     int area = m_width * m_height;
     return area - 2 * res;
   }
-  // This computes the scaled magnetization:
+
+  /**
+   * Computes the scaled magnetization of the current state of the Ising model.
+   *
+   * @return The magnetization (scaled to [-1, 1]).
+   */
   double get_magnetization() const {
     int res = get_int_magnetization();
     int area = m_width * m_height;
     return static_cast<double>(res) / area;
   }
+
   /**
-   * Computes the energy of the current state of the Ising model assuming h=0.
+   * Computes the basic FM Ising model energy of the current state.
    *
-   * Total energy can be computed as `energy0 - h * int_magnetization`.
+   * This energy is computed as
+   * $E_0 = -\sum_{\langle i, j \rangle} Z_i Z_j$,
+   * and may differ from the actual energy of the system if it uses a different
+   * Hamiltonian (e.g. non-zero magnetic field, J != 1, etc.).
    *
    * @return The energy.
    */
@@ -125,23 +109,22 @@ public:
     return 2 * frustration - 2 * m_width * m_height;
   }
 
-private:
-  // Data:
+protected:
+  // Dimensions
   const int m_width, m_height;
-  double m_beta, m_h;
-  // (m_state[i + 1] & m_mask) >> 1 represents the i-th row of the lattice.
-  // The first and last rows of m_state are copies of the last and first rows
-  // of the lattice, respectively, to implement periodic boundary conditions.
-  // Similarly, the first and last bits of each m_state[j]
-  // are copies of the last and
-  // first bits, respectively.
-  std::vector<std::uint64_t> m_state; // Length is m_height + 2
-  std::mt19937_64 m_rng;
-  std::uint64_t m_mask; // represents inner m_width bits of std::uint64_t
-  std::uint64_t m_thresholds[16]; // Precomputed thresholds for MCMC acceptance
 
-  // Helper functions:
-  void _precompute_thresholds();
+  // Lattice state
+  // (m_state[i + 1] & m_mask) >> 1 represents the i-th row of the lattice.
+  // m_state[0] and m_state[m_height + 1] are copies of m_state[m_height]
+  // and m_state[1], respectively, to implement periodic boundary conditions.
+  // Similarly, for each row, row & 1 and (row >> (m_width + 1)) & 1
+  // are copies of (row >> m_width) & 1 and (row >> 1) & 1, respectively.
+  std::vector<std::uint64_t> m_state;
+  std::mt19937_64 m_rng; // Random number generator
+  std::uint64_t m_mask;  // Mask representing the lattice
+
+protected:
+  // Helper functions
   void _fix_boundary() {
     // Fix the (periodic) boundary conditions.
     for (int i = 1; i <= m_height; ++i) {
@@ -152,6 +135,54 @@ private:
     m_state[0] = m_state[m_height];
     m_state[m_height + 1] = m_state[1];
   }
+};
+
+class IsingMCMC2D : public IsingMCMC2DBase {
+public:
+  /**
+   * Constructor to initialize the 2D Ising model for MCMC simulation.
+   *
+   * @param seed: The seed for random number generation, used in the MCMC steps.
+   * @param width: The width of the 2D lattice, between 2 and 62 (inclusive).
+   * @param height: The height of the 2D lattice, a positive integer >= 2.
+   * @param beta: The inverse temperature parameter of the Ising model.
+   * @param h: The external magnetic field.
+   */
+  IsingMCMC2D(std::uint64_t seed, int width, int height, double beta, double h)
+      : IsingMCMC2DBase(seed, width, height), m_beta(beta), m_h(h) {
+    _precompute_thresholds();
+  }
+  double get_beta() const { return m_beta; }
+  double get_h() const { return m_h; }
+
+  /**
+   * Adjusts the parameters of the Ising model without changing the state.
+   *
+   * @param beta: The new inverse temperature parameter.
+   * @param h: The new external magnetic field.
+   */
+  void adjust_parameters(double beta, double h);
+
+  using IsingMCMC2DBase::step;
+
+  /**
+   * Executes one step of the MCMC simulation.
+   */
+  virtual void step();
+
+  /**
+   * Executes an alternative step: flipping (or not) the whole lattice.
+   */
+  void step_flip();
+
+protected:
+  // Data
+  double m_beta, m_h;             // Hamiltonian parameters
+  std::uint64_t m_thresholds[16]; // Precomputed thresholds for MCMC acceptance
+
+private:
+  // Helper functions
+  void _precompute_thresholds();
   void _update_row(int row_i) {
     std::uint64_t row_up = m_state[row_i - 1];
     std::uint64_t row = m_state[row_i];
@@ -186,5 +217,6 @@ private:
     m_state[row_i] = row;
   }
 };
+
 } // namespace classifim_bench
 #endif // INCLUDED_ISING_MCMC
