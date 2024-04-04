@@ -2,7 +2,7 @@ import unittest
 
 import numpy as np
 
-import classifim_bench.peaks as peaks
+import classifim_gen.peaks as peaks
 
 class TestFindPeaks(unittest.TestCase):
     def test_flat_top(self):

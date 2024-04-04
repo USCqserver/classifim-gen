@@ -6,7 +6,7 @@
 #include <stdexcept>
 #include <vector>
 
-namespace classifim_bench {
+namespace classifim_gen {
 namespace {
 // Helper functions
 void _basic_step_flip(int width, int height, double beta_h,
@@ -244,4 +244,4 @@ void IsingNNNMCMC::step_flip() {
   _basic_step_flip(m_width, m_height, m_beta * m_h, m_rng, m_state.data());
 }
 
-} // namespace classifim_bench
+} // namespace classifim_gen

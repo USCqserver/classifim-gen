@@ -1,10 +1,10 @@
-import classifim_utils
+import classifim.utils
 import classifim.input
 import numba
 import numpy as np
 import os
 import sklearn.decomposition
-from classifim_bench.bits import popcount64
+from classifim_gen.bits import popcount64
 
 @numba.njit(numba.uint64[:,:](numba.int8[:,:], numba.int8))
 def compact_zs_jit(zs, offset):
@@ -136,7 +136,7 @@ class ComputeKShadowMatrixPipeline:
         with np.load(dataset_filename) as f:
             npz_dataset = dict(f)
 
-        prng = classifim_utils.DeterministicPrng(self.suffix)
+        prng = classifim.utils.DeterministicPrng(self.suffix)
         dataset_train, dataset_test = classifim.input.split_train_test(
             npz_dataset, test_size=0.1,
             seed=prng.get_seed("test"),

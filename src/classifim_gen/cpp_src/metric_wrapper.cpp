@@ -18,22 +18,22 @@ void *create_straight_line_distance(int space_dim, int *grid_sizes,
     metric_size *= grid_size;
   }
 
-  classifim_bench::StraightLineDistance *distanceObj =
-      new classifim_bench::StraightLineDistance(
+  classifim_gen::StraightLineDistance *distanceObj =
+      new classifim_gen::StraightLineDistance(
           grid_spans, std::span<double>(metric, metric_size));
   return distanceObj;
 }
 
 void delete_straight_line_distance(void *obj) {
-  classifim_bench::StraightLineDistance *distanceObj =
-      reinterpret_cast<classifim_bench::StraightLineDistance *>(obj);
+  classifim_gen::StraightLineDistance *distanceObj =
+      reinterpret_cast<classifim_gen::StraightLineDistance *>(obj);
   delete distanceObj;
 }
 
 void straight_line_distance_distances(void *obj, int num_point_pairs,
                                       double *points, double *results) {
-  classifim_bench::StraightLineDistance *distanceObj =
-      reinterpret_cast<classifim_bench::StraightLineDistance *>(obj);
+  classifim_gen::StraightLineDistance *distanceObj =
+      reinterpret_cast<classifim_gen::StraightLineDistance *>(obj);
   std::span<double> point_span(points,
                                num_point_pairs * 2 * distanceObj->space_dim);
   std::vector<double> distances =
@@ -46,21 +46,21 @@ void *create_straight_line_distance1d(int grid_size, double *grid,
                                       double *metric) {
   std::span<double> grid_span(grid, grid_size);
   std::span<double> metric_span(metric, grid_size);
-  classifim_bench::StraightLineDistance1D *distanceObj =
-      new classifim_bench::StraightLineDistance1D(grid_span, metric_span);
+  classifim_gen::StraightLineDistance1D *distanceObj =
+      new classifim_gen::StraightLineDistance1D(grid_span, metric_span);
   return distanceObj;
 }
 
 void delete_straight_line_distance1d(void *obj) {
-  classifim_bench::StraightLineDistance1D *distanceObj =
-      reinterpret_cast<classifim_bench::StraightLineDistance1D *>(obj);
+  classifim_gen::StraightLineDistance1D *distanceObj =
+      reinterpret_cast<classifim_gen::StraightLineDistance1D *>(obj);
   delete distanceObj;
 }
 
 void straight_line_distance1d_distances(void *obj, int num_point_pairs,
                                         double *points, double *results) {
-  classifim_bench::StraightLineDistance1D *distanceObj =
-      reinterpret_cast<classifim_bench::StraightLineDistance1D *>(obj);
+  classifim_gen::StraightLineDistance1D *distanceObj =
+      reinterpret_cast<classifim_gen::StraightLineDistance1D *>(obj);
   std::span<double> point_span(points, num_point_pairs * 2);
   std::span<double> results_span(results, num_point_pairs);
   distanceObj->distances(point_span, results_span);
@@ -68,7 +68,7 @@ void straight_line_distance1d_distances(void *obj, int num_point_pairs,
 
 std::uint64_t count_inversions(int num_values, double *values) {
   std::span<double> values_span(values, num_values);
-  return classifim_bench::count_inversions(values_span);
+  return classifim_gen::count_inversions(values_span);
 }
 
 } // extern "C"

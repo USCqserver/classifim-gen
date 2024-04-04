@@ -3,7 +3,7 @@
 import numpy as np
 import os
 import scipy.special
-from classifim_utils import load_tensor
+from classifim.utils import load_tensor
 
 def store_tensor_subset(orig_path, subset_ii, dest_path, tensor_name):
     """

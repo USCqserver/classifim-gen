@@ -2,7 +2,7 @@ import unittest
 import numpy as np
 import math
 
-import classifim_bench.fft as fft
+import classifim_gen.fft as fft
 
 class TestFFT(unittest.TestCase):
     def test_apply_creation(self):

@@ -1,6 +1,6 @@
 import unittest
 import numpy as np
-import classifim_bench.hubbard_hamiltonian as hubbard_hamiltonian
+import classifim_gen.hubbard_hamiltonian as hubbard_hamiltonian
 import os
 
 # cupy is optional:

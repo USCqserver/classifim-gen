@@ -5,8 +5,8 @@ Functions and classes relevant to the Hubbard Hamiltonian on a 12-site lattice.
 import numpy as np
 import functools
 import scipy.special
-import classifim_bench.hamiltonian as hamiltonian
-from classifim_bench.bits import countbits16
+import classifim_gen.hamiltonian as hamiltonian
+from classifim_gen.bits import countbits16
 
 @functools.lru_cache(maxsize=32)
 def compute_choices(n: int, k: int) -> np.ndarray:

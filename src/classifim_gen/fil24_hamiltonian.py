@@ -5,7 +5,7 @@ in hubbard_hamiltonian.py. It has 2 copies of the 12-site lattice
 stacked on top of each other.
 """
 
-import classifim_bench.hamiltonian as hamiltonian
+import classifim_gen.hamiltonian as hamiltonian
 import ctypes
 import functools
 import math
@@ -14,7 +14,7 @@ import os
 import scipy.sparse
 import sys
 from tqdm import tqdm
-from classifim_bench.bits import reverse_bit_pairs_uint32, countbits32, \
+from classifim_gen.bits import reverse_bit_pairs_uint32, countbits32, \
         roll_left, extract_every_second_bit_uint32, \
         spread_to_every_second_bit_uint32
 
@@ -322,7 +322,7 @@ class CppFil1DFamily:
         lib_path = os.path.join(
             os.path.dirname(__file__),
             'lib',
-            'libclassifim_bench' + extension)
+            'libclassifim_gen' + extension)
         lib = ctypes.CDLL(lib_path)
 
         # create_fil1d_family
@@ -483,7 +483,7 @@ class CppFil1DFamily:
         TOP_ROW_MASK = 0xaaaaaaaa
         TOP_ROW_STAGGERED = 0x88888888
         zs_top_staggered = (zs & TOP_ROW_MASK) ^ TOP_ROW_STAGGERED
-        mtp_raw = classifim_bench.bits.countbits32(zs_top_staggered)
+        mtp_raw = classifim_gen.bits.countbits32(zs_top_staggered)
         return np.abs(1.0 - mtp_raw * (2.0 / self.nsites))
 
     @functools.cached_property
@@ -502,7 +502,7 @@ class CppFil1DFamily:
         zs = self.vi_to_z
         BOTTOM_ROW_MASK = 0x55555555
         zs_bottom = zs & BOTTOM_ROW_MASK
-        mb_raw = classifim_bench.bits.countbits32(zs_bottom)
+        mb_raw = classifim_gen.bits.countbits32(zs_bottom)
         return 1.0 - mb_raw * (2.0 / self.nsites)
 
     def randomly_transform_z(self, zs: np.ndarray, seed=42) -> np.ndarray:
@@ -603,7 +603,7 @@ def compute_best_possible_xe(
         zs_to_vi_f: function to map zs to vi
         lambdas_to_params_f: function to map lambdas to parameters
           (e.g. gamma, su, sk for FIL24).
-        probs_cache: classifim_bench.ground_state_cache with probabilities.
+        probs_cache: classifim_gen.ground_state_cache with probabilities.
 
     Returns:
         float: best possible cross-entropy error.

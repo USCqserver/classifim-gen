@@ -5,7 +5,7 @@
 #include <span>
 #include <vector>
 
-namespace classifim_bench {
+namespace classifim_gen {
 // nsites is the number of sites in the lattice.
 // There are 2 qubits per lattice site.
 // 1 <= nsites <= 15.
@@ -108,5 +108,5 @@ inline std::uint32_t rotate_bit_pairs_right(const std::uint32_t z,
   const std::uint32_t mask = (1u << rshift_bits) - 1u;
   return (z >> rshift_bits) | ((z & mask) << lshift_bits);
 }
-} // namespace classifim_bench
+} // namespace classifim_gen
 #endif // INCLUDED_FIL24_HAMILTONIAN

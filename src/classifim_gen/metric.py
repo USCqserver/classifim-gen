@@ -9,7 +9,7 @@ import numpy as np
 import os
 import scipy.stats
 import sys
-from classifim_bench.linalg import average_consecutive
+from classifim_gen.linalg import average_consecutive
 
 def _get_lib():
     extension = {
@@ -19,7 +19,7 @@ def _get_lib():
     lib_path = os.path.join(
         os.path.dirname(__file__),
         'lib',
-        'libclassifim_bench' + extension)
+        'libclassifim_gen' + extension)
     lib = ctypes.CDLL(lib_path)
     return lib
 

@@ -10,7 +10,7 @@
 #include <utility>
 #include <vector>
 
-namespace classifim_bench {
+namespace classifim_gen {
 namespace {
 
 // process_translations and process_transforms are utility functions for
@@ -161,4 +161,4 @@ void Fil1DFamily::init_op_zs() {
     op_uterms.push_back(term_zb / 2.0);
   }
 }
-} // namespace classifim_bench
+} // namespace classifim_gen

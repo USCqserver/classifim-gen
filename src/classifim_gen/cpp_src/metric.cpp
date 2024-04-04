@@ -27,7 +27,7 @@
 // but for now its not worth the dependency.
 // #include <xtensor-blas/xlinalg.hpp>
 
-namespace classifim_bench {
+namespace classifim_gen {
 namespace {
 // Returns the index of the least significant 1 bit in v.
 // If v is 0, returns -1.
@@ -467,4 +467,4 @@ std::uint64_t count_inversions(std::span<double> arr) {
   return InversionCounter::count_inversions(arr);
 }
 
-} // namespace classifim_bench
+} // namespace classifim_gen

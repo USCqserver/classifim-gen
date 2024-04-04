@@ -1,7 +1,7 @@
 """
 This module implements a cache for ground state computations.
 """
-import classifim_utils
+import classifim.utils
 import enum
 import filelock
 import numpy as np
@@ -89,12 +89,6 @@ class GroundStateCache:
         else:
             self.params_vec_to_file_paths = {}
 
-    # TODO:9:remove
-    # @staticmethod
-    # def hash_base36(v, length=13):
-    #     # TODO:9: hash(v) is not guaranteed to be stable.
-    #     return np.base_repr(hash(v), 36, length)[-length:].lower()
-
     def get_gs_filename(self, params_vec, suffix=''):
         """
         Computes full filename to save the file with ground state data.
@@ -108,7 +102,7 @@ class GroundStateCache:
         assert len(params_vec) == len(self.param_keys)
         for p in params_vec:
             assert isinstance(p, float)
-        hash_str = classifim_utils.hash_base36(params_vec)
+        hash_str = classifim.utils.hash_base36(params_vec)
         return os.path.join(
             self.save_path,
             f"{self.ham_name}_{hash_str}{suffix}.npz")

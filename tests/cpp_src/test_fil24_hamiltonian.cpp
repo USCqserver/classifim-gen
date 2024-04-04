@@ -5,7 +5,7 @@
 #include <cstdint>
 
 TEST_CASE("nsites=6", "[Fil24Orbits]") {
-  auto orbits6 = classifim_bench::Fil24Orbits(6);
+  auto orbits6 = classifim_gen::Fil24Orbits(6);
   REQUIRE(orbits6.is_initialized());
   auto &z_to_vi = orbits6.get_z_to_vi();
   auto &vi_to_z = orbits6.get_vi_to_z();
@@ -25,7 +25,7 @@ TEST_CASE("nsites=6", "[Fil24Orbits]") {
   }
   SECTION("Fil1DFamily") {
     // For base lattice with 6 sites we have 6 * 2 = 12 qubits.
-    auto family12 = classifim_bench::Fil1DFamily(orbits6, {1, 2, 4, 5});
+    auto family12 = classifim_gen::Fil1DFamily(orbits6, {1, 2, 4, 5});
     REQUIRE(!family12.is_initialized());
     family12.init();
     REQUIRE(family12.is_initialized());
@@ -75,7 +75,7 @@ TEST_CASE("nsites=6", "[Fil24Orbits]") {
 }
 
 TEST_CASE("initialization", "[Fil24Orbits]") {
-  auto orbits3 = classifim_bench::Fil24Orbits(3, false);
+  auto orbits3 = classifim_gen::Fil24Orbits(3, false);
   REQUIRE_FALSE(orbits3.is_initialized());
   orbits3.init();
   REQUIRE(orbits3.is_initialized());
@@ -85,22 +85,22 @@ TEST_CASE("initialization", "[Fil24Orbits]") {
 
 TEST_CASE("nsites=12 benchmark", "[!benchmark]") {
   BENCHMARK("orbits12") {
-    auto orbits12 = classifim_bench::Fil24Orbits(12);
+    auto orbits12 = classifim_gen::Fil24Orbits(12);
     return orbits12.get_vi_to_z().size();
   };
 }
 
 TEST_CASE("nsites=6", "[ReverseBitPairs]") {
   const std::uint32_t z = 0b000110111111;
-  REQUIRE(classifim_bench::reverse_bit_pairs(z, 6) == 0b111111100100);
+  REQUIRE(classifim_gen::reverse_bit_pairs(z, 6) == 0b111111100100);
 }
 
 TEST_CASE("nsites=6, rotate_by=1", "[RotateBitPairsRight]") {
   const std::uint32_t z = 0b000110111111;
-  REQUIRE(classifim_bench::rotate_bit_pairs_right(z, 6) == 0b110001101111);
+  REQUIRE(classifim_gen::rotate_bit_pairs_right(z, 6) == 0b110001101111);
 }
 
 TEST_CASE("nsites=6, rotate_by=5", "[RotateBitPairsRight]") {
   const std::uint32_t z = 0b000110111111;
-  REQUIRE(classifim_bench::rotate_bit_pairs_right(z, 6, 5) == 0b011011111100);
+  REQUIRE(classifim_gen::rotate_bit_pairs_right(z, 6, 5) == 0b011011111100);
 }

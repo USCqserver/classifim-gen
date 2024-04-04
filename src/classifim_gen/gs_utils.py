@@ -1,6 +1,6 @@
 """Utilities for ground state computation"""
 
-import classifim_bench.gs_cache
+import classifim_gen.gs_cache
 import collections.abc
 import datetime
 import numpy as np
@@ -153,7 +153,7 @@ def compute_lanczos(params_vec, ham_family, k=4, ncv=40, maxiter=40,
         if verbose:
             print("failure_dict:", file=sys.stderr)
             debug_print_dict(failure_dict, indent=2)
-        raise classifim_bench.gs_cache.GroundStateComputationError(
+        raise classifim_gen.gs_cache.GroundStateComputationError(
             "ArpackNoConvergence",
             *e.args,
             failure_dict=failure_dict)

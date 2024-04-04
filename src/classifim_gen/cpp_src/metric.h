@@ -9,7 +9,7 @@
 #include <vector>
 #include <xtensor/xarray.hpp>
 
-namespace classifim_bench {
+namespace classifim_gen {
 class StraightLineDistance {
 public:
   const int space_dim;
@@ -93,5 +93,5 @@ private:
 
 std::uint64_t count_inversions(std::span<double> arr);
 
-} // namespace classifim_bench
+} // namespace classifim_gen
 #endif // INCLUDED_FIL24_HAMILTONIAN

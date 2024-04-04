@@ -1,8 +1,8 @@
 import unittest
 import numpy as np
-import classifim_bench.evec_continuation as evec_continuation
-import classifim_bench.hamiltonian as hamiltonian
-import classifim_bench.linalg as linalg
+import classifim_gen.evec_continuation as evec_continuation
+import classifim_gen.hamiltonian as hamiltonian
+import classifim_gen.linalg as linalg
 
 
 class TestEvecContinuation(unittest.TestCase):

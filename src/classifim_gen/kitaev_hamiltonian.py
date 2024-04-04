@@ -4,8 +4,8 @@ Functions and classes relevant to the Hubbard Hamiltonian for a 1D chain.
 
 import numpy as np
 import quspin
-import classifim_bench.hamiltonian as hamiltonian
-import classifim_bench.fft as fft
+import classifim_gen.hamiltonian as hamiltonian
+import classifim_gen.fft as fft
 
 import quspin.operators
 import quspin.basis

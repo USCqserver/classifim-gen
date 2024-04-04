@@ -2,7 +2,7 @@
 Computing peak accuracy for comparison with prior work.
 """
 
-import classifim_bench.plot_tools
+import classifim_gen.plot_tools
 import functools
 import numpy as np
 import scipy.signal
@@ -33,7 +33,7 @@ def extract_gs_meshgrid(fim_df, sweep_lambda_index):
     df = fim_df[fim_df["dir"] == str(sweep_lambda_index)]
     sweep_lambda_name = "lambda" + str(sweep_lambda_index)
     fixed_lambda_name = "lambda" + str(1 - sweep_lambda_index)
-    mg = classifim_bench.plot_tools.df_to_meshgrid(
+    mg = classifim_gen.plot_tools.df_to_meshgrid(
             df, sweep_lambda_name, fixed_lambda_name)
     # axis=0 means 'lambda_fixed', axis=1 means 'lambda_sweep':
     mg = rename_keys(mg, {

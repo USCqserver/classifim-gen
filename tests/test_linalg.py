@@ -1,6 +1,6 @@
 import unittest
 import numpy as np
-import classifim_bench.linalg as linalg
+import classifim_gen.linalg as linalg
 import math
 
 

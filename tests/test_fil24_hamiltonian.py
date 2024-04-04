@@ -1,5 +1,5 @@
 import unittest
-import classifim_bench.fil24_hamiltonian as fil24_hamiltonian
+import classifim_gen.fil24_hamiltonian as fil24_hamiltonian
 
 class TestBraceletCount(unittest.TestCase):
     def test_l12(self):

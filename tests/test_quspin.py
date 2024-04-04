@@ -6,7 +6,7 @@ import numpy as np
 import quspin
 import scipy.sparse
 
-import classifim_bench.fft as fft
+import classifim_gen.fft as fft
 
 # Test QuSpin conventions.
 @unittest.skip("""QuSpin index changes over time.

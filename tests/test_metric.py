@@ -1,6 +1,6 @@
 import unittest
 import numpy as np
-import classifim_bench.metric
+import classifim_gen.metric
 
 class TestStraightLineDistance(unittest.TestCase):
     def _test_2D(self, cls):
@@ -30,10 +30,10 @@ class TestStraightLineDistance(unittest.TestCase):
             (3 + 1/3 + 1/12 + np.sqrt(7)) / 4, places=15)
 
     def test_2D_Py(self):
-        self._test_2D(classifim_bench.metric.StraightLineDistance)
+        self._test_2D(classifim_gen.metric.StraightLineDistance)
 
     def test_2D_Cpp(self):
-        self._test_2D(classifim_bench.metric.StraightLineDistanceCpp)
+        self._test_2D(classifim_gen.metric.StraightLineDistanceCpp)
 
     def _test_1D(self, cls):
         grid = [np.arange(4)]
@@ -45,10 +45,10 @@ class TestStraightLineDistance(unittest.TestCase):
             0.5 + np.sqrt(2) + np.sqrt(3) + 1.0, places=15)
 
     def test_1D_Py(self):
-        self._test_1D(classifim_bench.metric.StraightLineDistance)
+        self._test_1D(classifim_gen.metric.StraightLineDistance)
 
     def test_1D_Cpp(self):
-        self._test_1D(classifim_bench.metric.StraightLineDistanceCpp)
+        self._test_1D(classifim_gen.metric.StraightLineDistanceCpp)
 
     def _test_2D_flat(self, cls):
         grid = [(0.5 + np.arange(4)) / 4, (0.5 + np.arange(4)) / 4]
@@ -64,23 +64,23 @@ class TestStraightLineDistance(unittest.TestCase):
                 np.linalg.norm(a - b), places=15)
 
     def test_2D_flat_Py(self):
-        self._test_2D_flat(classifim_bench.metric.StraightLineDistance)
+        self._test_2D_flat(classifim_gen.metric.StraightLineDistance)
 
     def test_2D_flat_Cpp(self):
-        self._test_2D_flat(classifim_bench.metric.StraightLineDistanceCpp)
+        self._test_2D_flat(classifim_gen.metric.StraightLineDistanceCpp)
 
 class TestCountInversions(unittest.TestCase):
     def test_empty(self):
-        self.assertEqual(classifim_bench.metric.count_inversions([]), 0)
+        self.assertEqual(classifim_gen.metric.count_inversions([]), 0)
 
     def test_simple(self):
-        self.assertEqual(classifim_bench.metric.count_inversions([0, 1, 2, 3]), 0)
-        self.assertEqual(classifim_bench.metric.count_inversions([3, 0, 1, 2]), 3)
-        self.assertEqual(classifim_bench.metric.count_inversions([3, 2, 1, 0]), 6)
+        self.assertEqual(classifim_gen.metric.count_inversions([0, 1, 2, 3]), 0)
+        self.assertEqual(classifim_gen.metric.count_inversions([3, 0, 1, 2]), 3)
+        self.assertEqual(classifim_gen.metric.count_inversions([3, 2, 1, 0]), 6)
 
 class TestComputeRankingError(unittest.TestCase):
     def test_simple(self):
-        compute_ranking_error = classifim_bench.metric.compute_ranking_error
+        compute_ranking_error = classifim_gen.metric.compute_ranking_error
         a0 = np.array([0, 1, 2, 3])
         ii = np.array([3, 1, 0, 2]) # Random permutation of [0, 1, 2, 3]
         self.assertEqual(compute_ranking_error(a0[ii], a0[ii]), 0.0)
@@ -92,7 +92,7 @@ class TestComputeRankingError(unittest.TestCase):
         self.assertEqual(compute_ranking_error(a1[ii], a0[ii]), 1.0)
 
     def test_ties(self):
-        compute_ranking_error = classifim_bench.metric.compute_ranking_error
+        compute_ranking_error = classifim_gen.metric.compute_ranking_error
         a0 = np.array([.0, .1, .1, .2])
         ii = np.array([2, 0, 3, 1]) # Random permutation of [0, 1, 2, 3]
         self.assertEqual(compute_ranking_error(a0[ii], a0[ii]), 1 / 12)

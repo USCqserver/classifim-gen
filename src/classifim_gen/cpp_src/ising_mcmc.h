@@ -6,7 +6,7 @@
 #include <span>
 #include <vector>
 
-namespace classifim_bench {
+namespace classifim_gen {
 class IsingMCMC2DBase {
 public:
   /**
@@ -323,5 +323,5 @@ private:
   }
 };
 
-} // namespace classifim_bench
+} // namespace classifim_gen
 #endif // INCLUDED_ISING_MCMC

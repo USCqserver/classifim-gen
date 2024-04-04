@@ -4,8 +4,8 @@
 #include <stdexcept>
 
 namespace {
-classifim_bench::Fil24Orbits *get_orbits(int nsites) {
-  static std::map<int, classifim_bench::Fil24Orbits> orbits_map;
+classifim_gen::Fil24Orbits *get_orbits(int nsites) {
+  static std::map<int, classifim_gen::Fil24Orbits> orbits_map;
   auto it = orbits_map.find(nsites);
   if (it == orbits_map.end()) {
     it = orbits_map
@@ -17,10 +17,10 @@ classifim_bench::Fil24Orbits *get_orbits(int nsites) {
 }
 } // namespace
 
-classifim_bench::Fil1DFamily *create_fil1d_family(int nsites, int *edge_dirs,
+classifim_gen::Fil1DFamily *create_fil1d_family(int nsites, int *edge_dirs,
                                                   int num_edge_dirs) {
-  classifim_bench::Fil24Orbits *orbits = get_orbits(nsites);
-  classifim_bench::Fil1DFamily *res = new classifim_bench::Fil1DFamily(
+  classifim_gen::Fil24Orbits *orbits = get_orbits(nsites);
+  classifim_gen::Fil1DFamily *res = new classifim_gen::Fil1DFamily(
       *orbits, std::vector<int>(edge_dirs, edge_dirs + num_edge_dirs));
   try {
     res->init();
@@ -31,12 +31,12 @@ classifim_bench::Fil1DFamily *create_fil1d_family(int nsites, int *edge_dirs,
   }
 }
 
-void delete_fil1d_family(classifim_bench::Fil1DFamily *fil1d_family) {
+void delete_fil1d_family(classifim_gen::Fil1DFamily *fil1d_family) {
   delete fil1d_family;
 }
 
 const double *
-fil1d_family_get_op_kterms(classifim_bench::Fil1DFamily *fil1d_family,
+fil1d_family_get_op_kterms(classifim_gen::Fil1DFamily *fil1d_family,
                            int *size) {
   auto &op_kterms = fil1d_family->get_op_kterms();
   *size = op_kterms.size();
@@ -44,14 +44,14 @@ fil1d_family_get_op_kterms(classifim_bench::Fil1DFamily *fil1d_family,
 }
 
 const double *
-fil1d_family_get_op_uterms(classifim_bench::Fil1DFamily *fil1d_family,
+fil1d_family_get_op_uterms(classifim_gen::Fil1DFamily *fil1d_family,
                            int *size) {
   auto &op_uterms = fil1d_family->get_op_uterms();
   *size = op_uterms.size();
   return op_uterms.data();
 }
 
-void fil1d_family_get_op_x(classifim_bench::Fil1DFamily *fil1d_family,
+void fil1d_family_get_op_x(classifim_gen::Fil1DFamily *fil1d_family,
                            const int **row_ptrs, int *nrows,
                            const int **col_idxs, const double **data,
                            int *nnz) {
@@ -71,7 +71,7 @@ void fil1d_family_get_op_x(classifim_bench::Fil1DFamily *fil1d_family,
 }
 
 const std::uint32_t *
-fil1d_family_get_z_to_vi(const classifim_bench::Fil1DFamily *fil1d_family,
+fil1d_family_get_z_to_vi(const classifim_gen::Fil1DFamily *fil1d_family,
                          int *size) {
   const std::vector<std::uint32_t> &z_to_vi =
       fil1d_family->orbits.get_z_to_vi();
@@ -80,7 +80,7 @@ fil1d_family_get_z_to_vi(const classifim_bench::Fil1DFamily *fil1d_family,
 }
 
 const std::uint32_t *
-fil1d_family_get_vi_to_z(const classifim_bench::Fil1DFamily *fil1d_family,
+fil1d_family_get_vi_to_z(const classifim_gen::Fil1DFamily *fil1d_family,
                          int *size) {
   const std::vector<std::uint32_t> &vi_to_z =
       fil1d_family->orbits.get_vi_to_z();
@@ -89,7 +89,7 @@ fil1d_family_get_vi_to_z(const classifim_bench::Fil1DFamily *fil1d_family,
 }
 
 const std::uint8_t *
-fil1d_family_get_orbit_sizes(const classifim_bench::Fil1DFamily *fil1d_family,
+fil1d_family_get_orbit_sizes(const classifim_gen::Fil1DFamily *fil1d_family,
                              int *size) {
   const std::vector<std::uint8_t> &orbit_sizes =
       fil1d_family->orbits.get_orbit_sizes();

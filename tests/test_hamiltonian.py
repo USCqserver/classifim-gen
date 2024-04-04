@@ -1,6 +1,6 @@
 import unittest
 import numpy as np
-import classifim_bench.hamiltonian as hamiltonian
+import classifim_gen.hamiltonian as hamiltonian
 
 
 class TestDenseHamiltonianFamily(unittest.TestCase):

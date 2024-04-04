@@ -4,18 +4,18 @@
 #include <cassert>
 #include <stdexcept>
 
-void ising_mcmc2D_base_get_state(const classifim_bench::IsingMCMC2DBase *mcmc,
+void ising_mcmc2D_base_get_state(const classifim_gen::IsingMCMC2DBase *mcmc,
                                  std::uint64_t *state, std::size_t size) {
   mcmc->get_state(std::span<std::uint64_t>{state, size});
 }
 
-void ising_mcmc2D_base_produce_shifted_state(classifim_bench::IsingMCMC2D *mcmc,
+void ising_mcmc2D_base_produce_shifted_state(classifim_gen::IsingMCMC2D *mcmc,
                                              std::uint64_t *state,
                                              std::size_t size) {
   mcmc->produce_shifted_state(std::span<std::uint64_t>{state, size});
 }
 
-void ising_mcmc2D_step_combined_ef(classifim_bench::IsingMCMC2D *mcmc,
+void ising_mcmc2D_step_combined_ef(classifim_gen::IsingMCMC2D *mcmc,
                                    int n_steps, int n_energies,
                                    std::int32_t *energies, bool flip) {
   if (0 > n_energies) {

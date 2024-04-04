@@ -1,4 +1,4 @@
-import classifim_utils
+import classifim.utils
 import ctypes
 import numpy as np
 import os
@@ -24,7 +24,7 @@ class IsingMCMC2DBase:
         lib_path = os.path.join(
             os.path.dirname(__file__),
             'lib',
-            'libclassifim_bench' + extension)
+            'libclassifim_gen' + extension)
         lib = ctypes.CDLL(lib_path)
 
         # Define functions here.
@@ -112,7 +112,7 @@ class IsingMCMC2DBase:
         lib.create_ising_nnn_mcmc.restype = ctypes.c_void_p
 
         lib.ising_nnn_mcmc_adjust_parameters.argtypes = [
-            ctypes.c_void_p,  # classifim_bench::IsingNNNMCMC *mcmc
+            ctypes.c_void_p,  # classifim_gen::IsingNNNMCMC *mcmc
             ctypes.c_double,  # double beta
             ctypes.c_double,  # double jh
             ctypes.c_double,  # double jv
@@ -123,17 +123,17 @@ class IsingMCMC2DBase:
         lib.ising_nnn_mcmc_adjust_parameters.restype = None
 
         lib.ising_nnn_mcmc_step_flip.argtypes = [
-            ctypes.c_void_p,  # classifim_bench::IsingNNNMCMC *mcmc
+            ctypes.c_void_p,  # classifim_gen::IsingNNNMCMC *mcmc
         ]
         lib.ising_nnn_mcmc_step_flip.restype = None
 
         lib.ising_nnn_mcmc_get_beta.argtypes = [
-            ctypes.c_void_p,  # const classifim_bench::IsingNNNMCMC *mcmc
+            ctypes.c_void_p,  # const classifim_gen::IsingNNNMCMC *mcmc
         ]
         lib.ising_nnn_mcmc_get_beta.restype = ctypes.c_int
 
         lib.ising_nnn_mcmc_get_h.argtypes = [
-            ctypes.c_void_p,  # const classifim_bench::IsingNNNMCMC *mcmc
+            ctypes.c_void_p,  # const classifim_gen::IsingNNNMCMC *mcmc
         ]
         lib.ising_nnn_mcmc_get_h.restype = ctypes.c_double
 
@@ -408,7 +408,7 @@ def generate_1d_dataset(
     """
     if ts is None:
         ts = np.linspace(0, 4, 1001)[1:]
-    prng = classifim_utils.DeterministicPrng(seed)
+    prng = classifim.utils.DeterministicPrng(seed)
     mcmc = IsingMCMC2D(seed=prng.get_int64_seed("IsingMCMC2D"), **kwargs)
     samples_per_ts = num_passes * num_samples_per_pass_ts
     height = mcmc.get_height()
