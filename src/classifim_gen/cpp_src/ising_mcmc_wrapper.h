@@ -23,8 +23,7 @@ void ising_mcmc2D_base_reset(classifim_gen::IsingMCMC2DBase *mcmc) {
   mcmc->reset();
 }
 
-void ising_mcmc2D_base_step(classifim_gen::IsingMCMC2DBase *mcmc,
-                            int n_steps) {
+void ising_mcmc2D_base_step(classifim_gen::IsingMCMC2DBase *mcmc, int n_steps) {
   mcmc->step(n_steps);
 }
 
@@ -41,15 +40,23 @@ double ising_mcmc2D_base_get_magnetization(
   return mcmc->get_magnetization();
 }
 
-int ising_mcmc2D_base_get_energy0(
+int ising_mcmc2D_base_get_total_nn(const classifim_gen::IsingMCMC2DBase *mcmc) {
+  return mcmc->get_total_nn();
+}
+
+int ising_mcmc2D_base_get_total_nnn(
     const classifim_gen::IsingMCMC2DBase *mcmc) {
+  return mcmc->get_total_nnn();
+}
+
+int ising_mcmc2D_base_get_energy0(const classifim_gen::IsingMCMC2DBase *mcmc) {
   return mcmc->get_energy0();
 }
 
 // IsingMCMC2D:
 classifim_gen::IsingMCMC2D *create_ising_mcmc2D(std::uint64_t seed, int width,
-                                                  int height, double beta,
-                                                  double h) {
+                                                int height, double beta,
+                                                double h) {
   return new classifim_gen::IsingMCMC2D(seed, width, height, beta, h);
 }
 
@@ -62,7 +69,7 @@ void ising_mcmc2D_step_flip(classifim_gen::IsingMCMC2D *mcmc) {
   mcmc->step_flip();
 }
 
-int ising_mcmc2D_get_beta(const classifim_gen::IsingMCMC2D *mcmc) {
+double ising_mcmc2D_get_beta(const classifim_gen::IsingMCMC2D *mcmc) {
   return mcmc->get_beta();
 }
 
@@ -79,8 +86,8 @@ void ising_mcmc2D_step_combined_ef(classifim_gen::IsingMCMC2D *mcmc,
 classifim_gen::IsingNNNMCMC *
 create_ising_nnn_mcmc(std::uint64_t seed, int width, int height, double beta,
                       double jh, double jv, double jp, double jm, double h) {
-  return new classifim_gen::IsingNNNMCMC(seed, width, height, beta, jh, jv,
-                                           jp, jm, h);
+  return new classifim_gen::IsingNNNMCMC(seed, width, height, beta, jh, jv, jp,
+                                         jm, h);
 }
 
 void ising_nnn_mcmc_adjust_parameters(classifim_gen::IsingNNNMCMC *mcmc,
@@ -93,13 +100,35 @@ void ising_nnn_mcmc_step_flip(classifim_gen::IsingNNNMCMC *mcmc) {
   mcmc->step_flip();
 }
 
-int ising_nnn_mcmc_get_beta(const classifim_gen::IsingNNNMCMC *mcmc) {
+double ising_nnn_mcmc_get_beta(const classifim_gen::IsingNNNMCMC *mcmc) {
   return mcmc->get_beta();
+}
+
+double ising_nnn_mcmc_get_jh(const classifim_gen::IsingNNNMCMC *mcmc) {
+  return mcmc->get_jh();
+}
+
+double ising_nnn_mcmc_get_jv(const classifim_gen::IsingNNNMCMC *mcmc) {
+  return mcmc->get_jv();
+}
+
+double ising_nnn_mcmc_get_jp(const classifim_gen::IsingNNNMCMC *mcmc) {
+  return mcmc->get_jp();
+}
+
+double ising_nnn_mcmc_get_jm(const classifim_gen::IsingNNNMCMC *mcmc) {
+  return mcmc->get_jm();
 }
 
 double ising_nnn_mcmc_get_h(const classifim_gen::IsingNNNMCMC *mcmc) {
   return mcmc->get_h();
 }
+
+// Step + recording 2 observables + flip
+// observables buffer must be of size 2 * n_obs_samples
+void ising_nnn_mcmc_step_combined_2of(classifim_gen::IsingNNNMCMC *mcmc,
+                                      int n_steps, int n_obs_samples,
+                                      std::int32_t *observables, bool flip);
 
 } // extern "C"
 #endif // INCLUDED_ISING_MCMC_WRAPPER

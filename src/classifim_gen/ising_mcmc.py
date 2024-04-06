@@ -61,6 +61,12 @@ class IsingMCMC2DBase:
         lib.ising_mcmc2D_base_get_magnetization.argtypes = [ctypes.c_void_p]
         lib.ising_mcmc2D_base_get_magnetization.restype = ctypes.c_double
 
+        lib.ising_mcmc2D_base_get_total_nn.argtypes = [ctypes.c_void_p]
+        lib.ising_mcmc2D_base_get_total_nn.restype = ctypes.c_int
+
+        lib.ising_mcmc2D_base_get_total_nnn.argtypes = [ctypes.c_void_p]
+        lib.ising_mcmc2D_base_get_total_nnn.restype = ctypes.c_int
+
         lib.ising_mcmc2D_base_get_energy0.argtypes = [ctypes.c_void_p]
         lib.ising_mcmc2D_base_get_energy0.restype = ctypes.c_int
 
@@ -130,12 +136,43 @@ class IsingMCMC2DBase:
         lib.ising_nnn_mcmc_get_beta.argtypes = [
             ctypes.c_void_p,  # const classifim_gen::IsingNNNMCMC *mcmc
         ]
-        lib.ising_nnn_mcmc_get_beta.restype = ctypes.c_int
+        lib.ising_nnn_mcmc_get_beta.restype = ctypes.c_double
+
+        lib.ising_nnn_mcmc_get_jh.argtypes = [
+            ctypes.c_void_p,  # const classifim_gen::IsingNNNMCMC *mcmc
+        ]
+        lib.ising_nnn_mcmc_get_jh.restype = ctypes.c_double
+
+        lib.ising_nnn_mcmc_get_jv.argtypes = [
+            ctypes.c_void_p,  # const classifim_gen::IsingNNNMCMC *mcmc
+        ]
+        lib.ising_nnn_mcmc_get_jv.restype = ctypes.c_double
+
+        lib.ising_nnn_mcmc_get_jp.argtypes = [
+            ctypes.c_void_p,  # const classifim_gen::IsingNNNMCMC *mcmc
+        ]
+        lib.ising_nnn_mcmc_get_jp.restype = ctypes.c_double
+
+        lib.ising_nnn_mcmc_get_jm.argtypes = [
+            ctypes.c_void_p,  # const classifim_gen::IsingNNNMCMC *mcmc
+        ]
+        lib.ising_nnn_mcmc_get_jm.restype = ctypes.c_double
 
         lib.ising_nnn_mcmc_get_h.argtypes = [
             ctypes.c_void_p,  # const classifim_gen::IsingNNNMCMC *mcmc
         ]
         lib.ising_nnn_mcmc_get_h.restype = ctypes.c_double
+
+
+        lib.ising_nnn_mcmc_step_combined_2of.argtypes = [
+            ctypes.c_void_p,  # classifim_gen::IsingNNNMCMC *mcmc
+            ctypes.c_int,     # int n_steps
+            ctypes.c_int,     # int n_obs_samples
+            # std::int32_t *observables:
+            ndpointer(ctypes.c_int32, flags="C_CONTIGUOUS"),
+            ctypes.c_bool     # bool flip
+        ]
+        lib.ising_nnn_mcmc_step_combined_2of.restype = None
 
         return lib
 
@@ -194,6 +231,12 @@ class IsingMCMC2DBase:
 
     def get_magnetization(self):
         return self._lib.ising_mcmc2D_base_get_magnetization(self._mcmc)
+
+    def get_total_nn(self):
+        return self._lib.ising_mcmc2D_base_get_total_nn(self._mcmc)
+
+    def get_total_nnn(self):
+        return self._lib.ising_mcmc2D_base_get_total_nnn(self._mcmc)
 
     def get_energy0(self):
         """
@@ -302,8 +345,6 @@ class IsingMCMC2D(IsingMCMC2DBase):
         return self.difficulty_factor(1.0 / self.get_beta())
 
 class IsingNNNMCMC(IsingMCMC2DBase):
-    # create_ising_nnn_mcmc(std::uint64_t seed, int width, int height, double beta,
-    #                   double jh, double jv, double jp, double jm, double h) {
     def __init__(self, seed=1, width=20, height=20,
                  beta=ISING_2D_BETA_CRITICAL, jh=1.0, jv=1.0, jp=0.0, jm=0.0, h=0.0):
         """
@@ -337,9 +378,7 @@ class IsingNNNMCMC(IsingMCMC2DBase):
         )
         self._mcmc = ctypes.c_void_p(_mcmc)
 
-    def adjust_parameters(
-            self, beta=ISING_2D_BETA_CRITICAL,
-            jh=1.0, jv=1.0, jp=0.0, jm=0.0, h=0.0):
+    def adjust_parameters(self, beta, jh, jv, jp, jm, h):
         self._lib.ising_nnn_mcmc_adjust_parameters(
             self._mcmc,
             ctypes.c_double(beta),
@@ -349,14 +388,68 @@ class IsingNNNMCMC(IsingMCMC2DBase):
             ctypes.c_double(jm),
             ctypes.c_double(h))
 
+    def adjust_some_parameters(self, **kwargs):
+        self.adjust_parameters(
+            beta=kwargs.get('beta', self.get_beta()),
+            jh=kwargs.get('jh', self.get_jh()),
+            jv=kwargs.get('jv', self.get_jv()),
+            jp=kwargs.get('jp', self.get_jp()),
+            jm=kwargs.get('jm', self.get_jm()),
+            h=kwargs.get('h', self.get_h()))
+
     def step_flip(self):
         self._lib.ising_nnn_mcmc_step_flip(self._mcmc)
+
 
     def get_beta(self):
         return self._lib.ising_nnn_mcmc_get_beta(self._mcmc)
 
+    def get_jh(self):
+        return self._lib.ising_nnn_mcmc_get_jh(self._mcmc)
+
+    def get_jv(self):
+        return self._lib.ising_nnn_mcmc_get_jv(self._mcmc)
+
+    def get_jp(self):
+        return self._lib.ising_nnn_mcmc_get_jp(self._mcmc)
+
+    def get_jm(self):
+        return self._lib.ising_nnn_mcmc_get_jm(self._mcmc)
+
     def get_h(self):
         return self._lib.ising_nnn_mcmc_get_h(self._mcmc)
+
+    def step_combined_2of(self, n_steps, observables_out, flip):
+        """
+        Perform n_steps of MCMC steps storing the 2 obs in observables_out.
+
+        Args:
+            n_steps: The number of MCMC steps to perform.
+            observables_out: The array to store the observables.
+            flip: If True, perform a flip at the end of the MCMC steps.
+        """
+        if not isinstance(observables_out, np.ndarray):
+            raise TypeError(
+                "The 'observables_out' argument must be a numpy.ndarray.")
+        if observables_out.ndim != 2:
+            raise ValueError("The 'observables_out' must be 2-dimensional.")
+        n_obs_samples = observables_out.shape[0]
+        if n_obs_samples > n_steps:
+            raise ValueError(
+                "We can sample at most 1 energy per MCMC step.")
+        if observables_out.shape[1] != 2:
+            raise ValueError(
+                "The 'observables_out' array must have 2 columns "
+                "(one for each observable).")
+        if observables_out.dtype != np.int32:
+            raise TypeError("The dtype of 'observables_out' must be int32.")
+        if not observables_out.flags['C_CONTIGUOUS']:
+            raise ValueError("The 'observables_out' array must be C-contiguous.")
+
+        self._lib.ising_nnn_mcmc_step_combined_2of(
+            self._mcmc, ctypes.c_int(n_steps),
+            ctypes.c_int(n_obs_samples),
+            observables_out, ctypes.c_bool(flip))
 
 def estimate_fim(ts, energies, cutoff_t=0.5675):
     """

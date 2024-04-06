@@ -172,6 +172,18 @@ void IsingMCMC2D::step_flip() {
 }
 
 // class IsingNNNMCMC:
+IsingNNNMCMC::IsingNNNMCMC(std::uint64_t seed, int width, int height,
+                           double beta, double jh, double jv, double jp,
+                           double jm, double h)
+    : IsingMCMC2DBase(seed, width, height), m_beta(beta), m_jh(jh), m_jv(jv),
+      m_jp(jp), m_jm(jm), m_h(h) {
+  if (width % 9 == 1) {
+    throw std::invalid_argument(
+        "Cases with width % 9 == 1 are not supported in _update_row. Sorry.");
+  }
+  _precompute_thresholds();
+}
+
 void IsingNNNMCMC::_precompute_thresholds() {
   constexpr std::uint64_t m_rng_max = decltype(m_rng)::max();
   double jh = m_beta * m_jh;
@@ -181,28 +193,29 @@ void IsingNNNMCMC::_precompute_thresholds() {
   double h = m_beta * m_h;
   // Consider a single coupling between za = (-1)**xa and zb = (-1)**xb and the
   // coupling strength J. Its energy is
-  // -J * za * zb = J * (1 - 2 * (xa^xb)).
+  // -J * za * zb = J * (2 * (xa^xb) - 1).
   // Magnetic field can be considered as a coupling
   // with a fixed spin zb = 1 = (-1)**0.
   // Energy before the flip:
-  // E0 = \sum_{dir} J_{dir} * (1 - 2 * n_{dir}),
+  // E0 = \sum_{dir} J_{dir} * (2 * n_{dir} - n_{dir,max}),
   // where n_{dir} is the number of frustrated couplings.
   // Energy after the flip is E1 = -E0.
-  // delta_E = E1 - E0 = -2 * E0 = \sum_{dir} J_{dir} * (4 * n_{dir} - 2).
+  // delta_E = E1 - E0 = -2 * E0 =
+  //   \sum_{dir} J_{dir} * (2 * n_{dir,max} - 4 * n_{dir}).
   for (int n_jh = 0; n_jh <= 2; ++n_jh) {
-    double delta_e0 = jh * (4 * n_jh - 2);
+    double delta_e0 = jh * (4 - 4 * n_jh);
     int idx0 = n_jh << 7;
     for (int n_jv = 0; n_jv <= 2; ++n_jv) {
-      double delta_e1 = delta_e0 + jv * (4 * n_jv - 2);
+      double delta_e1 = delta_e0 + jv * (4 - 4 * n_jv);
       int idx1 = idx0 + (n_jv << 5);
       for (int n_jp = 0; n_jp <= 2; ++n_jp) {
-        double delta_e2 = delta_e1 + jp * (4 * n_jp - 2);
+        double delta_e2 = delta_e1 + jp * (4 - 4 * n_jp);
         int idx2 = idx1 + (n_jp << 3);
         for (int n_jm = 0; n_jm <= 2; ++n_jm) {
-          double delta_e3 = delta_e2 + jm * (4 * n_jm - 2);
+          double delta_e3 = delta_e2 + jm * (4 - 4 * n_jm);
           int idx3 = idx2 + (n_jm << 1);
           for (int n_h = 0; n_h <= 1; ++n_h) {
-            double delta_e = delta_e3 + h * (2 * n_h - 1);
+            double delta_e = delta_e3 + h * (2 - 4 * n_h);
             int idx = idx3 + n_h;
             double p_accept = std::exp(-delta_e);
             if (p_accept >= 1.0) {

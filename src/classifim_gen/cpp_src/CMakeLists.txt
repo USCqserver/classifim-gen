@@ -23,8 +23,6 @@ set(WRAPPER_FILES
 
 # Add a shared library target for classifim_gen.so
 add_library(classifim_gen SHARED ${SOURCE_FILES} ${WRAPPER_FILES})
-target_include_directories(classifim_gen PUBLIC ${xtensor_INCLUDE_DIRS})
-target_link_libraries(classifim_gen PUBLIC xtensor)
 set_target_properties(classifim_gen PROPERTIES OUTPUT_NAME "classifim_gen")
 # Or is it classifim_gen.dll?
 if(WIN32)

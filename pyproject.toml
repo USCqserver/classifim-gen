@@ -4,7 +4,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "classifim_gen"
-version = "0.4.1.post0.dev1"
+version = "0.4.1.post0.dev13"
 description = "A Python package for generating datasets for FIM-Estimation tasks."
 authors = [{name = "Victor Kasatkin", email = "2148587+fiktor@users.noreply.github.com"}]
 license = {file = "LICENSE"}

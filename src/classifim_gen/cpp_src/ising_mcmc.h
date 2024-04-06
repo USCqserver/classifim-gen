@@ -88,6 +88,29 @@ public:
     return static_cast<double>(res) / area;
   }
 
+  // Get the number of NN couplings with anti-aligned spins:
+  int get_total_nn() const {
+    int frustration = 0;
+    for (int row_i = 1; row_i <= m_height; ++row_i) {
+      std::uint64_t row = m_state[row_i];
+      frustration += __builtin_popcountll((row ^ (row >> 1)) & m_mask);
+      frustration += __builtin_popcountll((row ^ m_state[row_i - 1]) & m_mask);
+    }
+    return frustration;
+  }
+
+  // Get the number of NNN couplings with anti-aligned spins:
+  int get_total_nnn() const {
+    int frustration = 0;
+    for (int row_i = 1; row_i <= m_height; ++row_i) {
+      std::uint64_t row0 = m_state[row_i - 1];
+      std::uint64_t row1 = m_state[row_i];
+      frustration += __builtin_popcountll((row0 ^ (row1 >> 1)) & m_mask);
+      frustration += __builtin_popcountll((row1 ^ (row0 >> 1)) & m_mask);
+    }
+    return frustration;
+  }
+
   /**
    * Computes the basic FM Ising model energy of the current state.
    *
@@ -99,15 +122,9 @@ public:
    * @return The energy.
    */
   int get_energy0() const {
-    int frustration = 0;
-    for (int row_i = 1; row_i <= m_height; ++row_i) {
-      std::uint64_t row = m_state[row_i];
-      frustration += __builtin_popcountll((row ^ (row >> 1)) & m_mask);
-      frustration += __builtin_popcountll((row ^ m_state[row_i - 1]) & m_mask);
-    }
     // The total number of couplings is 2 * width * height.
     // Frustrated coupling has energy +1, non-frustrated coupling has energy -1.
-    return 2 * frustration - 2 * m_width * m_height;
+    return 2 * get_total_nn() - 2 * m_width * m_height;
   }
 
 protected:
@@ -237,11 +254,7 @@ public:
    * @param h: The external magnetic field.
    */
   IsingNNNMCMC(std::uint64_t seed, int width, int height, double beta,
-               double jh, double jv, double jp, double jm, double h)
-      : IsingMCMC2DBase(seed, width, height), m_beta(beta), m_jh(jh), m_jv(jv),
-        m_jp(jp), m_jm(jm), m_h(h) {
-    _precompute_thresholds();
-  }
+               double jh, double jv, double jp, double jm, double h);
   double get_beta() const { return m_beta; }
   double get_jh() const { return m_jh; }
   double get_jv() const { return m_jv; }
