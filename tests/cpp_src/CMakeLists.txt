@@ -9,11 +9,13 @@ find_package(Catch2 3 REQUIRED)
 set(SOURCE_FILES
     ../../src/classifim_gen/cpp_src/fil24_hamiltonian.cpp
     ../../src/classifim_gen/cpp_src/fil24_hamiltonian.h
+    ../../src/classifim_gen/cpp_src/ising_mcmc.cpp
+    ../../src/classifim_gen/cpp_src/ising_mcmc.h
 )
 
-# test_classifim_bench/cpp_src/test_fil24_hamiltonian.cpp
 set(TEST_FILES
     test_fil24_hamiltonian.cpp
+    test_ising_mcmc.cpp
 )
 
 add_executable(tests ${TEST_FILES} ${SOURCE_FILES})

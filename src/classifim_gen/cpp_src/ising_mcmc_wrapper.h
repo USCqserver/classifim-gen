@@ -15,6 +15,9 @@ void delete_ising_mcmc2D_base(classifim_gen::IsingMCMC2DBase *mcmc) {
 void ising_mcmc2D_base_get_state(const classifim_gen::IsingMCMC2DBase *mcmc,
                                  std::uint64_t *state, std::size_t size);
 
+void ising_mcmc2D_base_set_state(classifim_gen::IsingMCMC2DBase *mcmc,
+                                 const std::uint64_t *state, std::size_t size);
+
 void ising_mcmc2D_base_produce_shifted_state(
     classifim_gen::IsingMCMC2DBase *mcmc, std::uint64_t *state,
     std::size_t size);
@@ -51,6 +54,16 @@ int ising_mcmc2D_base_get_total_nnn(
 
 int ising_mcmc2D_base_get_energy0(const classifim_gen::IsingMCMC2DBase *mcmc) {
   return mcmc->get_energy0();
+}
+
+int ising_mcmc2D_base_step_parallel_tempering(
+    classifim_gen::IsingMCMC2DBase *a, classifim_gen::IsingMCMC2DBase *b) {
+  return a->step_parallel_tempering(*b);
+}
+
+double
+ising_mcmc2D_base_get_beta_energy(const classifim_gen::IsingMCMC2DBase *mcmc) {
+  return mcmc->get_beta_energy();
 }
 
 // IsingMCMC2D:
@@ -129,6 +142,22 @@ double ising_nnn_mcmc_get_h(const classifim_gen::IsingNNNMCMC *mcmc) {
 void ising_nnn_mcmc_step_combined_2of(classifim_gen::IsingNNNMCMC *mcmc,
                                       int n_steps, int n_obs_samples,
                                       std::int32_t *observables, bool flip);
+
+void ising_nnn_mcmc_step_spins(classifim_gen::IsingNNNMCMC *mcmc) {
+  mcmc->step_spins();
+}
+
+void ising_nnn_mcmc_step_lines(classifim_gen::IsingNNNMCMC *mcmc) {
+  mcmc->step_lines();
+}
+
+void ising_nnn_mcmc_step_lines_horizontal(classifim_gen::IsingNNNMCMC *mcmc) {
+  mcmc->step_lines_horizontal();
+}
+
+void ising_nnn_mcmc_step_lines_vertical(classifim_gen::IsingNNNMCMC *mcmc) {
+  mcmc->step_lines_vertical();
+}
 
 } // extern "C"
 #endif // INCLUDED_ISING_MCMC_WRAPPER

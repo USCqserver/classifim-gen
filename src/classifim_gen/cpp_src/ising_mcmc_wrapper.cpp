@@ -9,6 +9,11 @@ void ising_mcmc2D_base_get_state(const classifim_gen::IsingMCMC2DBase *mcmc,
   mcmc->get_state(std::span<std::uint64_t>{state, size});
 }
 
+void ising_mcmc2D_base_set_state(classifim_gen::IsingMCMC2DBase *mcmc,
+                                 const std::uint64_t *state, std::size_t size) {
+  mcmc->set_state(std::span<const std::uint64_t>{state, size});
+}
+
 void ising_mcmc2D_base_produce_shifted_state(
     classifim_gen::IsingMCMC2DBase *mcmc, std::uint64_t *state,
     std::size_t size) {

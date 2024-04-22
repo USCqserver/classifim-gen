@@ -7,6 +7,20 @@
 #include <vector>
 
 namespace classifim_gen {
+/**
+ * IsingMCMC2DBase is a base class for simulating 2D Ising models.
+ * All models are defined a width x height 2D square lattice with periodic
+ * boundary conditions (although the Hamiltonian may include couplings beyond
+ * the horizontal and vertical nearest neighbors, thus, e.g., a triangular
+ * lattice can be simulated). Each lattice site is a spin variable
+ * $Z_i = \pm 1$. The lattice state is stored in a 1D array m_state
+ * of std::uint64_t: a site (i, j) is represented by the bit
+ * x = (m_state[i + 1] >> (j + 1)) & 1: Z_{i,j} = 1 - 2 * x.
+ * m_state[0] and m_state[m_height + 1] are copies of m_state[m_height]
+ * and m_state[1], respectively, to implement periodic boundary conditions.
+ *
+ * Specific Hamiltonians are implemented in derived classes.
+ */
 class IsingMCMC2DBase {
 public:
   /**
@@ -33,6 +47,17 @@ public:
   void get_state(std::span<std::uint64_t> state) const;
 
   /**
+   * Sets the state of the Ising model lattice.
+   *
+   * Input state is expected to be a 1D array (std::span) of length `height`,
+   * where each std::uint64_t represents a single row of 2D lattice sites.
+   * Only the lowest `width` bits of each std::uint64_t are used.
+   *
+   * @param state: A span containing the new lattice state.
+   */
+  void set_state(std::span<const std::uint64_t> state);
+
+  /**
    * Produces a shifted version of the current state of the Ising model lattice.
    *
    * Shifts are random offsets in both directions; the randomness is derived
@@ -42,6 +67,8 @@ public:
    *
    * The state is stored in a 1D array (std::span), where each std::uint64_t
    * represents a single row of 2D lattice sites.
+   *
+   * It is not const because it modifies the state of the RNG.
    *
    * @param state: A span to fill with the shifted lattice state of length
    * `height`.
@@ -56,6 +83,34 @@ public:
   virtual void step() = 0;
 
   /**
+   * Parallel tempering update swapping the state with other
+   * if necessary.
+   *
+   * Returns:
+   *   0 - invalid parameters (state's size mismatch)
+   *   1 - no swap performed
+   *   2 - swap performed
+   **/
+  int step_parallel_tempering(IsingMCMC2DBase &other) {
+    if (other.m_width != m_width || other.m_height != m_height) {
+      return 0;
+    }
+    // cur_energy - new_energy:
+    double delta_e = get_beta_energy() + other.get_beta_energy() -
+                     _get_beta_energy_of(other.m_state) -
+                     other._get_beta_energy_of(m_state);
+    std::bernoulli_distribution dist_accept(delta_e > 0.0 ? 1.0
+                                                          : std::exp(delta_e));
+    if (dist_accept(m_rng)) {
+      std::swap(m_state, other.m_state);
+      return 2;
+    }
+    return 1;
+  }
+
+  double get_beta_energy() const { return _get_beta_energy_of(m_state); }
+
+  /**
    * Executes `n_steps` steps of the MCMC simulation.
    * @param n_steps: The number of steps to execute.
    */
@@ -65,16 +120,17 @@ public:
     }
   }
 
+  /**
+   * Computes the integer magnetization of the current state of the Ising model.
+   *
+   * It is defined as the sum over all sites $j$ of the lattice:
+   * $M = \sum_j Z_j = \sum_j (1 - 2 x_j)$, and takes values in the range
+   * $[-\text{area}, \text{area}]$.
+   *
+   * @return The magnetization.
+   */
   int get_int_magnetization() const {
-    int res = 0;
-    for (int i = 1; i <= m_height; ++i) {
-      std::uint64_t row = m_state[i] & m_mask;
-      // Add popcount of row
-      res += __builtin_popcountll(row);
-    }
-    // This is bit -> Z conversion: 0 -> +1, 1 -> -1:
-    int area = m_width * m_height;
-    return area - 2 * res;
+    return _get_int_magnetization_of(m_state);
   }
 
   /**
@@ -88,16 +144,17 @@ public:
     return static_cast<double>(res) / area;
   }
 
-  // Get the number of NN couplings with anti-aligned spins:
-  int get_total_nn() const {
-    int frustration = 0;
-    for (int row_i = 1; row_i <= m_height; ++row_i) {
-      std::uint64_t row = m_state[row_i];
-      frustration += __builtin_popcountll((row ^ (row >> 1)) & m_mask);
-      frustration += __builtin_popcountll((row ^ m_state[row_i - 1]) & m_mask);
-    }
-    return frustration;
-  }
+  /**
+   * Computes the number of nearest-neighbor couplings with anti-aligned spins
+   * in the current state of the Ising model.
+   *
+   * I.e. the result is
+   * $\sum_{\langle i, j \rangle} (1 - Z_i Z_j) / 2
+   * = \sum_{\langle i, j \rangle} xor(x_i, x_j)$.
+   *
+   * @return The number of anti-aligned nearest-neighbor couplings.
+   */
+  int get_total_nn() const { return _get_total_nn_of(m_state); }
 
   // Get the number of NNN couplings with anti-aligned spins:
   int get_total_nnn() const {
@@ -121,11 +178,7 @@ public:
    *
    * @return The energy.
    */
-  int get_energy0() const {
-    // The total number of couplings is 2 * width * height.
-    // Frustrated coupling has energy +1, non-frustrated coupling has energy -1.
-    return 2 * get_total_nn() - 2 * m_width * m_height;
-  }
+  int get_energy0() const { return _get_energy0_of(m_state); }
 
 protected:
   // Dimensions
@@ -142,6 +195,57 @@ protected:
   std::uint64_t m_mask;  // Mask representing the lattice
 
 protected:
+  virtual double
+  _get_beta_energy_of(const std::vector<std::uint64_t> &state) const = 0;
+
+  /**
+   * Computes the integer magnetization of a given state of the Ising model.
+   *
+   * See get_int_magnetization() for details.
+   *
+   * This function assumes (and does not check!) that `state` has the same
+   * format as m_state with the same width and height. Calling this function
+   * with `state` of different dimensions will result in undefined behavior.
+   *
+   * @param state: The state to compute the magnetization of.
+   * @return The magnetization.
+   */
+  int _get_int_magnetization_of(const std::vector<std::uint64_t> &state) const {
+    int res = 0;
+    for (int i = 1; i <= m_height; ++i) {
+      std::uint64_t row = state[i] & m_mask;
+      // Add popcount of row
+      res += __builtin_popcountll(row);
+    }
+    // This is bit -> Z conversion: 0 -> +1, 1 -> -1:
+    int area = m_width * m_height;
+    return area - 2 * res;
+  }
+
+  /**
+   * See documentation of get_energy0() and disclaimer in
+   * _get_int_magnetization_of.
+   */
+  int _get_energy0_of(const std::vector<std::uint64_t> &state) const {
+    // The total number of couplings is 2 * width * height.
+    // Frustrated coupling has energy +1, non-frustrated coupling has energy -1.
+    return 2 * _get_total_nn_of(state) - 2 * m_width * m_height;
+  }
+
+  /**
+   * See documentation of get_total_nn
+   * and disclaimer in _get_int_magnetization_of.
+   */
+  int _get_total_nn_of(const std::vector<std::uint64_t> &state) const {
+    int frustration = 0;
+    for (int row_i = 1; row_i <= m_height; ++row_i) {
+      std::uint64_t row = state[row_i];
+      frustration += __builtin_popcountll((row ^ (row >> 1)) & m_mask);
+      frustration += __builtin_popcountll((row ^ state[row_i - 1]) & m_mask);
+    }
+    return frustration;
+  }
+
   // Helper functions
   void _fix_boundary() {
     // Fix the (periodic) boundary conditions.
@@ -155,6 +259,15 @@ protected:
   }
 };
 
+/**
+ * IsingMCMC2D is a class for simulating the 2D Ising model using the
+ * Metropolis-Hastings Monte Carlo method.
+ *
+ * The model is defined by the Hamiltonian
+ * H = -J \sum_{\langle i, j \rangle} Z_i Z_j - h \sum_i Z_i,
+ * where we pick J = 1.0.
+ * The parameters of the model are $\beta = 1 / T$ and $h$.
+ */
 class IsingMCMC2D : public IsingMCMC2DBase {
 public:
   /**
@@ -198,7 +311,9 @@ protected:
   double m_beta, m_h;             // Hamiltonian parameters
   std::uint64_t m_thresholds[16]; // Precomputed thresholds for MCMC acceptance
 
-private:
+protected:
+  virtual double
+  _get_beta_energy_of(const std::vector<std::uint64_t> &state) const;
   // Helper functions
   void _precompute_thresholds();
   void _update_row(int row_i) {
@@ -236,6 +351,21 @@ private:
   }
 };
 
+/**
+ * IsingNNNMCMC is a class for simulating the 2D Ising model using the
+ * Metropolis-Hastings Monte Carlo method.
+ *
+ * The model is defined by the Hamiltonian
+ * H = - jh \sum_{horizontal couplings} ZZ - jv \sum_{vertical couplings} ZZ
+ *     - jp \sum_{diagonal couplings ++ and --} ZZ
+ *     - jm \sum_{diagonal couplings +- and -+} ZZ
+ *     - h \sum Z,
+ *
+ * That is, positive values of the coupling parameters correspond to
+ * ferromagnetic couplings, negative --- AFM.
+ *
+ * The parameters of the model are $\beta = 1 / T$, jh, jv, jp, jm, and h.
+ */
 class IsingNNNMCMC : public IsingMCMC2DBase {
 public:
   /**
@@ -282,20 +412,33 @@ public:
   /**
    * Executes one step of the MCMC simulation.
    */
-  virtual void step();
+  virtual void step() {
+    step_spins();
+    step_lines();
+  }
 
   /**
    * Executes an alternative step: flipping (or not) the whole lattice.
    */
   void step_flip();
+  void step_spins();
+
+  void step_lines() {
+    step_lines_horizontal();
+    step_lines_vertical();
+  }
+  void step_lines_horizontal();
+  void step_lines_vertical();
 
 protected:
   // Data
   double m_beta, m_jh, m_jv, m_jp, m_jm, m_h; // Hamiltonian parameters
   std::uint64_t m_thresholds[512]; // Precomputed thresholds for MCMC acceptance
 
-private:
+protected:
   // Helper functions
+  virtual double
+  _get_beta_energy_of(const std::vector<std::uint64_t> &state) const;
   void _precompute_thresholds();
   void _update_row(int row_i) {
     const std::uint64_t row_up = m_state[row_i - 1];
@@ -333,6 +476,44 @@ private:
       row |= ((row & 2) << m_width) | ((row >> m_width) & 1);
     }
     m_state[row_i] = row;
+  }
+  void _step_line_horizontal(int rowi) {
+    std::uint64_t row0 = m_state[rowi - 1];
+    std::uint64_t row1 = m_state[rowi]; // current row to flip or not.
+    std::uint64_t row2 = m_state[rowi + 1];
+    // sum(popcnt(xor)) = sum(1-ZZ) / 2
+    // e_current - e_new = beta * (-j) * 2 * sum(ZZ) = 4 * beta * j *
+    // (sum(popcnt(xor)) - m_width) P(transition) = min(1, exp(e_current -
+    // e_new))
+    double delta_e =
+        4 * m_jv *
+        (static_cast<int>(__builtin_popcountll((row0 ^ row1) & m_mask) +
+                          __builtin_popcountll((row1 ^ row2) & m_mask)) -
+         m_width);
+    delta_e +=
+        4 * m_jp *
+        (static_cast<int>(__builtin_popcountll((row0 ^ (row1 >> 1)) & m_mask) +
+                          __builtin_popcountll((row1 ^ (row2 >> 1)) & m_mask)) -
+         m_width);
+    delta_e +=
+        4 * m_jm *
+        (static_cast<int>(__builtin_popcountll(((row0 >> 1) ^ row1) & m_mask) +
+                          __builtin_popcountll(((row1 >> 1) ^ row2) & m_mask)) -
+         m_width);
+    // Z = 1 - 2 * bit
+    // - h * Z = h * (2 * bit - 1)
+    delta_e +=
+        2 * m_h * (2 * static_cast<int>(__builtin_popcountll(row1)) - m_width);
+    delta_e *= m_beta;
+    // Use Baker's acceptance probability:
+    double p_accept = 1.0 / (1.0 + std::exp(-delta_e));
+    std::uniform_real_distribution<double> distribution(0.0, 1.0);
+    double rnd = distribution(m_rng);
+
+    // Flip the row if the random number is less than the flip probability
+    if (rnd < p_accept) {
+      m_state[rowi] = row1 ^ ((1ULL << (m_width + 2)) - 1ULL);
+    }
   }
 };
 

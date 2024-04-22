@@ -1,9 +1,16 @@
 import classifim.utils
+import concurrent.futures
 import ctypes
+import functools
+import itertools
 import numpy as np
 import os
+import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 import sys
-import functools
+
+from tqdm import tqdm
 
 from numpy.ctypeslib import ndpointer
 
@@ -39,6 +46,13 @@ class IsingMCMC2DBase:
         ]
         lib.ising_mcmc2D_base_get_state.restype = None
 
+        lib.ising_mcmc2D_base_set_state.argtypes = [
+            ctypes.c_void_p,
+            ndpointer(ctypes.c_uint64, flags="C_CONTIGUOUS"),
+            ctypes.c_size_t
+        ]
+        lib.ising_mcmc2D_base_set_state.restype = None
+
         lib.ising_mcmc2D_base_produce_shifted_state.argtypes = [
             ctypes.c_void_p,
             ndpointer(ctypes.c_uint64, flags="C_CONTIGUOUS"),
@@ -69,6 +83,13 @@ class IsingMCMC2DBase:
 
         lib.ising_mcmc2D_base_get_energy0.argtypes = [ctypes.c_void_p]
         lib.ising_mcmc2D_base_get_energy0.restype = ctypes.c_int
+
+        lib.ising_mcmc2D_base_step_parallel_tempering.argtypes = [
+            ctypes.c_void_p, ctypes.c_void_p]
+        lib.ising_mcmc2D_base_step_parallel_tempering.restype = ctypes.c_int
+
+        lib.ising_mcmc2D_base_get_beta_energy.argtypes = [ctypes.c_void_p]
+        lib.ising_mcmc2D_base_get_beta_energy.restype = ctypes.c_double
 
         # MCMC 2D:
         lib.create_ising_mcmc2D.argtypes = [
@@ -174,6 +195,18 @@ class IsingMCMC2DBase:
         ]
         lib.ising_nnn_mcmc_step_combined_2of.restype = None
 
+        lib.ising_nnn_mcmc_step_spins.argtypes = [ctypes.c_void_p]
+        lib.ising_nnn_mcmc_step_spins.restype = None
+
+        lib.ising_nnn_mcmc_step_lines.argtypes = [ctypes.c_void_p]
+        lib.ising_nnn_mcmc_step_lines.restype = None
+
+        lib.ising_nnn_mcmc_step_lines_horizontal.argtypes = [ctypes.c_void_p]
+        lib.ising_nnn_mcmc_step_lines_horizontal.restype = None
+
+        lib.ising_nnn_mcmc_step_lines_vertical.argtypes = [ctypes.c_void_p]
+        lib.ising_nnn_mcmc_step_lines_vertical.restype = None
+
         return lib
 
     def __del__(self):
@@ -217,6 +250,28 @@ class IsingMCMC2DBase:
             f = self._lib.ising_mcmc2D_base_get_state
         f(self._mcmc, out, ctypes.c_size_t(out.shape[0]))
 
+    def set_state(self, state):
+        """
+        Set the state of the 2D Ising model.
+
+        Args:
+            state: The state vector of the 2D Ising model.
+        """
+        if not isinstance(state, np.ndarray):
+            raise TypeError("The 'state' argument must be a numpy.ndarray.")
+        if state.ndim != 1:
+            raise ValueError("The 'state' array must be 1-dimensional.")
+        if state.shape[0] != self.get_height():
+            raise ValueError(
+                "The 'state' array must have exactly height elements.")
+        if not state.flags['C_CONTIGUOUS']:
+            raise ValueError("The 'state' array must be C-contiguous.")
+        if state.dtype != np.uint64:
+            raise TypeError("The dtype of 'state' must be uint64.")
+
+        self._lib.ising_mcmc2D_base_set_state(
+            self._mcmc, state, ctypes.c_size_t(state.shape[0]))
+
     def reset(self):
         self._lib.ising_mcmc2D_base_reset(self._mcmc)
 
@@ -228,6 +283,9 @@ class IsingMCMC2DBase:
 
     def get_height(self):
         return self._lib.ising_mcmc2D_base_get_height(self._mcmc)
+
+    def get_area(self):
+        return self.get_width() * self.get_height()
 
     def get_magnetization(self):
         return self._lib.ising_mcmc2D_base_get_magnetization(self._mcmc)
@@ -244,6 +302,13 @@ class IsingMCMC2DBase:
         """
         return self._lib.ising_mcmc2D_base_get_energy0(self._mcmc)
 
+    def step_parallel_tempering(self, other):
+        return self._lib.ising_mcmc2D_base_step_parallel_tempering(
+            self._mcmc, other._mcmc)
+
+    def get_beta_energy(self):
+        return self._lib.ising_mcmc2D_base_get_beta_energy(self._mcmc)
+
     @staticmethod
     def unpack_state_to_matrix(state, width):
         """
@@ -255,6 +320,12 @@ class IsingMCMC2DBase:
         """
         jj = np.arange(width, dtype=np.uint64)
         return 1 - 2 * ((state[:, None] >> jj[None, :]) & 1).astype(np.int64)
+
+    def get_state_matrix(self):
+        """
+        Returns the current state as a 2D matrix.
+        """
+        return self.unpack_state_to_matrix(self.get_state(), self.get_width())
 
 class IsingMCMC2D(IsingMCMC2DBase):
     BETA_CRITICAL = ISING_2D_BETA_CRITICAL
@@ -419,7 +490,7 @@ class IsingNNNMCMC(IsingMCMC2DBase):
     def get_h(self):
         return self._lib.ising_nnn_mcmc_get_h(self._mcmc)
 
-    def step_combined_2of(self, n_steps, observables_out, flip):
+    def step_combined_2of(self, n_steps, observables_out=None, flip=False):
         """
         Perform n_steps of MCMC steps storing the 2 obs in observables_out.
 
@@ -428,6 +499,8 @@ class IsingNNNMCMC(IsingMCMC2DBase):
             observables_out: The array to store the observables.
             flip: If True, perform a flip at the end of the MCMC steps.
         """
+        if observables_out is None:
+            observables_out = np.empty(dtype=np.int32, shape=(n_steps, 2))
         if not isinstance(observables_out, np.ndarray):
             raise TypeError(
                 "The 'observables_out' argument must be a numpy.ndarray.")
@@ -450,8 +523,150 @@ class IsingNNNMCMC(IsingMCMC2DBase):
             self._mcmc, ctypes.c_int(n_steps),
             ctypes.c_int(n_obs_samples),
             observables_out, ctypes.c_bool(flip))
+        return observables_out
 
-def estimate_fim(ts, energies, cutoff_t=0.5675):
+    def step_spins(self):
+        self._lib.ising_nnn_mcmc_step_spins(self._mcmc)
+
+    def step_lines(self):
+        self._lib.ising_nnn_mcmc_step_lines(self._mcmc)
+
+    def step_lines_horizontal(self):
+        self._lib.ising_nnn_mcmc_step_lines_horizontal(self._mcmc)
+
+    def step_lines_vertical(self):
+        self._lib.ising_nnn_mcmc_step_lines_vertical(self._mcmc)
+
+class PTArray:
+    def __init__(self, mcmcs):
+        """
+        Initialize the PTArray with a list of IsingMCMC2DBase instances.
+
+        Args:
+            mcmcs (list): List of IsingMCMC2DBase instances.
+        """
+        assert len(mcmcs) >= 1
+        width = mcmcs[0].get_width()
+        height = mcmcs[0].get_height()
+        for i in range(1, len(mcmcs)):
+            assert mcmcs[i].get_width() == width
+            assert mcmcs[i].get_height() == height
+        self.mcmcs = mcmcs
+
+    def __len__(self):
+        return len(self.mcmcs)
+
+    def __getitem__(self, i):
+        return self.mcmcs[i]
+
+    def step_all(self, n_steps=1, imax=None):
+        """
+        Perform the specified number of steps on all MCMC instances in parallel.
+
+        Args:
+            n_steps (int): Number of steps to perform.
+            imax (int): If specified, only perform steps on mcmcs[:imax].
+        """
+        if imax is None:
+            imax = len(self.mcmcs)
+        for mcmc in self.mcmcs[:imax]:
+            mcmc.step(n_steps)
+
+    def step_pt(self, imin=0, imax=None, di=1):
+        """
+        Perform a parallel tempering step between pairs (
+            self.mcmcs[imin + j], self.mcmcs[imin + di + j])
+        for j in range(0, imax - imin - di).
+
+        Args:
+            imin (int): The starting index of the first element in the pair.
+            imax (int): The maximum index to perform parallel tempering.
+            di (int): The index difference between elements in the pair.
+        """
+        assert di > 0
+        if imax is None:
+            imax = len(self.mcmcs)
+        assert imin + di <= imax <= len(self.mcmcs)
+        for j in range(imin, imax - di):
+            self.mcmcs[j].step_parallel_tempering(self.mcmcs[j + di])
+
+    def get_states(self, out=None, shifted=False):
+        """
+        Extract the states from all MCMC instances into a single numpy array.
+
+        Args:
+            out (np.array): The array to store the states.
+            shifted (bool): If True, the states are shifted vertically
+                and horizontally by a random amount.
+
+        Returns:
+            np.array: An array where each row corresponds to the state of one
+                MCMC instance.
+        """
+        height = self.mcmcs[0].get_height()
+        if out is None:
+            out = np.empty(
+                shape=(len(self.mcmcs), height),
+                dtype=np.uint64)
+        assert out.shape == (len(self.mcmcs), height)
+        for i, mcmc in enumerate(self.mcmcs):
+            mcmc._get_state(out=out[i], shifted=shifted)
+        return out
+
+    def get_beta_energies(self):
+        """
+        Get the beta energies of all MCMC instances.
+
+        Returns:
+            np.array: An array of beta energies.
+        """
+        return np.array([mcmc.get_beta_energy() for mcmc in self.mcmcs])
+
+    def get_property(self, name):
+        """
+        Get the property of all MCMC instances.
+
+        Args:
+            name (str): The name of the property to extract.
+
+        Returns:
+            np.array: An array of property values.
+        """
+        return np.array([getattr(mcmc, 'get_' + name)() for mcmc in self.mcmcs])
+
+    def run_isnnn_equilibration(
+            self, beta_offset=1.2, num_cooldown_iters=108,
+            num_reheat_iters=27, num_inner_steps=8):
+        """
+        Run equilibration strategy which worked for IsNNN dataset.
+
+        Args:
+            beta_offset (float): Increase the beta by this amount during the
+                initial cooldown phase.
+            num_cooldown_iters (int): Number of iterations to perform during
+                the cooldown phase. Each iteration consists of multiple MCMC
+                steps and one PT step.
+            num_reheat_iters (int): Number of iterations to perform during
+                the reheating phase.
+            num_inner_steps (int): Number of MCMC steps to perform in each
+                iteration.
+        """
+        beta_true = self.get_property('beta')
+        beta_fake = beta_true + beta_offset
+        for i in range(len(self)):
+            self[i].adjust_some_parameters(beta=beta_fake[i])
+        self.step_all(16)
+        self.step_pt(di=2)
+        for _ in range(num_cooldown_iters):
+            self.step_all(num_inner_steps)
+            self.step_pt()
+        for i in range(len(self)):
+            self[i].adjust_some_parameters(beta=beta_true[i])
+        for _ in range(num_reheat_iters):
+            self.step_all(num_inner_steps)
+            self.step_pt()
+
+def estimate_fim_1d(ts, energies, cutoff_t=0.5675):
     """
     Estimate FIM from energies obtained from MCMC simulations.
 
@@ -563,5 +778,354 @@ def generate_1d_dataset(
         "_ts": ts,
         "_ii": ii,
         "_energies": energies,
-        "_fim": estimate_fim(ts, energies),
+        "_fim": estimate_fim_1d(ts, energies),
     }
+
+def isnnn_lambdas_to_params(lambda0, lambda1):
+    j_nn = lambda0
+    j_nnn = 1.0 - lambda0
+    return {
+        "beta": 0.4 / lambda1,
+        "jh": -j_nn,
+        "jv": -j_nn,
+        "jp": -j_nnn,
+        "jm": -j_nnn,
+        "h": 0.0}
+
+def isnnn_obs_to_energies(lambdas, obss):
+    """
+    Compute scaled energies of IsNNN.
+
+    H = +J_nn \sum_NN ZZ + J_NNN \sum_NNN ZZZ + const
+
+    const is implementation-defined and may depend on lambdas
+
+    Args:
+        lambdas: (n, 2) tensor with lambda0 and lambda1 values.
+        obss: (n, num_obs_types) tensor with the values of observables
+            num_obs_types is 2 for IsNNN.
+
+    Returns:
+        Energies scaled to T=1, i.e. values of beta * H.
+    """
+    n = max(lambdas.shape[0], obss.shape[0])
+    assert lambdas.shape == (n, 2) or lambdas.shape == (1, 2), (
+        f"{lambdas.shape} != ({n}, 2)")
+    assert obss.shape == (n, 2) or obss.shape == (1, 2), (
+        f"{obss.shape} != ({n}, 2)")
+    beta = 0.4 / lambdas[:, 1]
+    j_nn = lambdas[:, 0] * beta
+    j_nnn = (1.0 - lambdas[:, 0]) * beta
+    sum_nn = -2 * obss[:, 0]
+    sum_nnn = -2 * obss[:, 1]
+    return j_nn * sum_nn + j_nnn * sum_nnn
+
+def isnnn_estimate_fim(
+        data=None, lambda0s=None, lambda1s=None,
+        obss=None, scaling_resolution=None):
+    """
+    Estimate fisher information metric from observations for IsNNN.
+
+    Args:
+        data: dict to extract other arguments from.
+        lambda0s: values of lambda0 (J_NN / (J_NN + J_NNN))
+        lambda1s: values of lambda1 (T / 2.5)
+        obss: np.ndarray of shape (len(lambda0s), len(lambda1s), n, n_types),
+            where n_types = 2 (NN and NNN).
+        scaling_resolution: inverse lattice spacing
+            to be used in FIM scaling.
+
+    Returns:
+        FIM in the same format as classifim.bench.fidelity.compute_2d_fim
+    """
+    assert data is not None or all(
+            v is not None for v in [lambda0s, lambda1s, obss])
+    if obss is None:
+        obss = np.moveaxis(data["obss"], 0, 2)
+        n_lambda0s, n_lambda1s, n0, n1, n_types = obss.shape
+        n = n0 * n1
+        obss = obss.reshape((n_lambda0s, n_lambda1s, n, n_types))
+    else:
+        n_lambda0s, n_lambda1s, n, n_types = obss.shape
+    if lambda0s is None:
+        lambda0s = data["lambda0s"]
+    if lambda1s is None:
+        lambda1s = data["lambda1s"]
+    assert (n_lambda0s,) == lambda0s.shape
+    assert (n_lambda1s,) == lambda1s.shape
+    n_lambdas = (n_lambda0s, n_lambda1s)
+    if scaling_resolution is None:
+        scaling_resolution = data.get("scaling_resolution")
+        if scaling_resolution is None:
+            s0 = (n_lambda0s - 1) / (lambda0s[-1] - lambda0s[0])
+            s1 = (n_lambda1s - 1) / (lambda1s[-1] - lambda1s[0])
+            assert s0 == s1
+            assert s0 > 0
+            scaling_resolution = s0
+    res = {
+        "lambda0": [],
+        "lambda1": [],
+        "dir": [],
+        "fim": []}
+    cur_lambdas = [
+        np.tile(lambda0s[:, None, None], (1, n_lambda1s, n)),
+        np.tile(lambda1s[None, :, None], (n_lambda0s, 1, n))]
+    cur_lambdas = np.hstack([cl.ravel()[:, None] for cl in cur_lambdas])
+    same_energies = isnnn_obs_to_energies(cur_lambdas, obss.reshape(-1, n_types))
+    same_energies = same_energies.reshape((n_lambda0s, n_lambda1s, n))
+    same_offsets = np.mean(same_energies, axis=2)
+    same_ptildes = np.exp(-(same_energies - same_offsets[:, :, None]))
+    for direction, v in classifim.bench.fidelity.FIDELITY_DIRECTIONS_2D.items():
+        # b = a + v
+        # a corresponds to lambda_slices[0]; b corresponds to lambda_slices[1]
+        lambda_slices = []
+        cur_obsss = []
+        cur_lambdass = []
+        cur_n_lambdas = np.array(n_lambdas) - np.abs(v)
+        for i in range(2):
+            lambda_slices.append([
+                slice(
+                    max((1 - 2 * i) * v[j], 0),
+                    n_lambdas[j] - max((2 * i - 1) * v[j], 0))
+                for j in range(2)])
+            for j in range(2):
+                s = lambda_slices[-1][j]
+                assert s.stop - s.start == n_lambdas[j] - abs(v[j]), (
+                    f"{i=}, {j=}, {n_lambdas[j]}, v[j]={v[j]}, "
+                    f"{max((1 - 2 * i) * v[j], 0)}, {max((2 * i - 1) * v[j], 0)}")
+            cur_obss = obss[lambda_slices[i][0], lambda_slices[i][1], :, :]
+            try:
+                cur_obss = cur_obss.reshape(
+                    (np.prod(cur_n_lambdas) * n, n_types))
+            except ValueError:
+                print(f"dir={direction}, {v=}, {lambda_slices[i]=}, {cur_obss.shape=} != "
+                    + f"{(cur_n_lambdas[0], cur_n_lambdas[1], n, n_types)}")
+                raise
+            cur_obsss.append(cur_obss)
+            cur_lambdas = [
+                    np.tile(
+                        lambda0s[lambda_slices[i][0], None, None],
+                        (1, cur_n_lambdas[1], n)),
+                    np.tile(
+                        lambda1s[None, lambda_slices[i][1], None],
+                        (cur_n_lambdas[0], 1, n))]
+            cur_lambdass.append(np.hstack([cl.ravel()[:, None] for cl in cur_lambdas]))
+        cur_ptildes = [[None, None] for i in range(2)]
+        for i in range(2):
+            cur_ptildes[i][i] = same_ptildes[lambda_slices[i][0], lambda_slices[i][1], :]
+            other_energies = isnnn_obs_to_energies(cur_lambdass[i], cur_obsss[1 - i])
+            other_energies = other_energies.reshape((cur_n_lambdas[0], cur_n_lambdas[1], n))
+            other_offsets = same_offsets[lambda_slices[i][0], lambda_slices[i][1], None]
+            cur_ptildes[i][1 - i] = np.exp(-(other_energies - other_offsets))
+        cur_ptildes = np.array(cur_ptildes)
+        # Formula (L5)
+        sqrt_z_ratio = (np.mean(cur_ptildes[1, 0] / cur_ptildes[0, 0], axis=2) / (
+                np.mean(cur_ptildes[0, 1] / cur_ptildes[1, 1], axis=2)))**(1/4)
+        rx = (cur_ptildes[0] / cur_ptildes[1])**0.5 * sqrt_z_ratio[None, :, :, None]
+        fim = 8 * np.mean(1 - 2 / (rx + 1 / rx), axis=(0, 3)) * scaling_resolution**2
+        cur_lambdas_shape = (cur_n_lambdas[0], cur_n_lambdas[1], n, 2)
+        mid_lambda = (
+            cur_lambdass[0].reshape(cur_lambdas_shape)[:, :, 0]
+            + cur_lambdass[1].reshape(cur_lambdas_shape)[:, :, 0]) / 2
+        res["lambda0"].append(mid_lambda[:, :, 0].ravel())
+        res["lambda1"].append(mid_lambda[:, :, 1].ravel())
+        res["fim"].append(fim.ravel())
+        res["dir"].append(np.tile(direction, np.prod(cur_n_lambdas)).ravel())
+        assert res["lambda0"][-1].shape == res["fim"][-1].shape, (
+            f"{res['lambda0'][-1].shape} != {res['fim'][-1].shape}")
+    for key in list(res.keys()):
+        res[key] = np.concatenate(res[key])
+    return pd.DataFrame(res)
+
+def _isnnn_generate_data_single_pass(
+        mcmc, n_steps_per_sample, samples, obss, equil_args=None):
+    mcmc.run_isnnn_equilibration(**(equil_args or {}))
+    num_samples = samples.shape[1]
+    num_obss = obss.shape[1]
+    obss_pos = 0
+    assert samples.shape == (
+        len(mcmc), num_samples, mcmc[0].get_height())
+    assert obss.shape == (
+        len(mcmc), num_obss, 2)
+    assert samples[0, 0, :].flags['C_CONTIGUOUS']
+    assert samples.dtype == np.uint64
+    for j in range(num_samples):
+        if j > 0:
+            mcmc.step_pt()
+        next_obss_pos = (j + 1) * obss.shape[1] // num_samples
+        for i, mcmci in enumerate(mcmc):
+            mcmci.step_combined_2of(
+                n_steps=n_steps_per_sample,
+                observables_out=obss[i, obss_pos:next_obss_pos, :],
+                flip=True)
+            mcmci._get_state(samples[i, j, :], shifted=True)
+        obss_pos = next_obss_pos
+    assert obss_pos == obss.shape[1]
+
+def isnnn_generate_data(
+        seed,
+        lambda0s=None,
+        lambda1s=None,
+        num_passes=70,
+        num_samples_per_pass_lambda=2,
+        num_steps_per_sample=32,
+        lambdas_to_params=isnnn_lambdas_to_params,
+        width=20,
+        height=20,
+        num_threads=None,
+        use_tqdm=False):
+    """
+    Generates Ising NNN for ClassiFIM.
+
+    Args:
+        seed: The seed for random number generation.
+        lambda0s: Values for lambda0 (J_NN / (J_NN + J_NNN))
+        lambda1s: Values for lambda1 (temperature = 2.5 * lambda1)
+        num_passes: Each pass is a sweep through all lambda1s in ts
+            in descending order.
+        num_samples_per_pass_lambda: Number of samples to generate for each
+            pair (pass, t).
+        num_steps_per_sample: Number of MCMC steps to perform before each sample.
+        lambdas_to_params: Function that converts lambda0, lambda1 to parameters
+        width: The width of the 2D lattice.
+        height: The height of the 2D lattice.
+        num_threads: Number of threads to use.
+
+    Returns:
+        dict with keys:
+            samples: np.ndarray with type np.uint64 and shape
+                (num_passes, len(lambda0s), len(lambda1s),
+                num_samples_per_pass_lambda, height)
+            obss: np.ndarray with type np.int32 and shape
+                (num_passes, len(lambda0s), len(lambda1s),
+                num_samples_per_pass_lambda * 32, 2)
+    """
+    if lambda0s is None:
+        lambda0s = (np.arange(64) + 1) / 64
+    assert len(lambda0s.shape) == 1
+    if lambda1s is None:
+        lambda1s = (np.arange(64) + 1) / 64
+    assert len(lambda1s.shape) == 1
+    prng = classifim.utils.DeterministicPrng(seed)
+    samples = np.empty(
+        shape=(num_passes, len(lambda0s), len(lambda1s),
+               num_samples_per_pass_lambda, height),
+        dtype=np.uint64)
+    obss = np.empty(
+        shape=(num_passes, len(lambda0s), len(lambda1s),
+               num_samples_per_pass_lambda * num_steps_per_sample, 2),
+        dtype=np.int32)
+    def run(pass_i, lambda0_i, progress=None):
+        lambda0 = lambda0s[lambda0_i]
+        mcmc = PTArray([
+            IsingNNNMCMC(
+                width=width, height=height,
+                seed=prng.get_int64_seed((
+                    "IsingNNNMCMC", pass_i, lambda0_i, lambda1_i)),
+                **lambdas_to_params(lambda0, lambda1))
+            for lambda1_i, lambda1 in enumerate(lambda1s)])
+        equil_args = {}
+        if 40 <= lambda0_i <= 43:
+            equil_args["num_cooldown_iters"] = [
+                216, 432, 432, 216][lambda0_i - 40]
+        _isnnn_generate_data_single_pass(
+            mcmc,
+            num_steps_per_sample,
+            samples[pass_i, lambda0_i, :, :, :],
+            obss[pass_i, lambda0_i, :, :, :],
+            equil_args=equil_args)
+        if progress is not None:
+            progress.update(1)
+        return True
+    runs = itertools.product(range(num_passes), range(len(lambda0s)))
+    if num_threads is None:
+        if use_tqdm:
+            runs = tqdm(runs, total=num_passes * len(lambda0s))
+        for run_i in runs:
+            run(*run_i)
+    else:
+        with concurrent.futures.ThreadPoolExecutor(
+                max_workers=num_threads) as executor:
+            if use_tqdm:
+                progress = tqdm(total=num_passes * len(lambda0s))
+            else:
+                progress = None
+            res = executor.map(lambda r: run(*r, progress=progress), list(runs))
+            for r in res:
+                assert r
+            if use_tqdm:
+                progress.close()
+    return {
+        "lambda0s": lambda0s,
+        "lambda1s": lambda1s,
+        "samples": samples,
+        "obss": obss,
+        "width": width,
+        "height": height}
+
+def _isnnn_dataset_save(dataset, filename):
+    """
+    Helper function for isnnn_generate_datasets.
+    """
+    if filename.endswith(".parquet"):
+        schema = pa.schema([
+            pa.field("lambda0", pa.float32(), nullable=False),
+            pa.field("lambda1", pa.float32(), nullable=False),
+            pa.field(
+                "samples",
+                pa.binary(dataset["samples"].itemsize),
+                nullable=False),
+        ])
+        assert sorted(schema.names) == sorted(dataset.keys())
+        table = pa.Table.from_pydict(dataset, schema=schema)
+        pq.write_table(table, filename)
+        return
+    assert filename.endswith(".npz")
+    np.savez_compressed(filename, **dataset)
+
+def isnnn_generate_datasets(
+        seed, data, train_filename=None, test_filename=None):
+    """
+    Generate IsNNN datasets for ClassiFIM.
+
+    Args:
+        seed: The seed for random number generation.
+        data: The MCMC data generated by isnnn_generate_data.
+        train_filename: Save the training dataset to this file.
+        test_filename: Save the test dataset to this file.
+
+    Returns:
+        d_train, d_test: The training and test datasets.
+    """
+    prng = classifim.utils.DeterministicPrng(seed)
+    samples = data["samples"]
+    lambda0s = data["lambda0s"]
+    lambda1s = data["lambda1s"]
+    num_passes, num_lambda0s, num_lambda1s, num_samples0, height = samples.shape
+    # num_samples0 = num_samples per (pass, lambda0, lambda1)
+    assert height == data["height"]
+    assert lambda0s.shape == (num_lambda0s,)
+    assert lambda1s.shape == (num_lambda1s,)
+    width = data["width"]
+    # num_samples1 = num_samples per (lambda0, lambda1)
+    num_samples1 = num_passes * num_samples0
+    num_samples = num_lambda0s * num_lambda1s * num_samples1
+    samples = np.moveaxis(samples, 0, 2).reshape((num_samples, height))
+    samples = classifim.io.samples2d_to_bytes(samples, width)
+    lambda0s = np.tile(lambda0s[:, None, None], (1, num_lambda1s, num_samples1))
+    lambda1s = np.tile(lambda1s[None, :, None], (num_lambda0s, 1, num_samples1))
+    d_all = {"lambda0": lambda0s, "lambda1": lambda1s, "samples": samples}
+    np_rng = np.random.default_rng(prng.get_int64_seed("shufle_test"))
+    idx = np_rng.permutation(num_samples)
+    for k in list(d_all.keys()):
+        d_all[k] = d_all[k].reshape((num_samples,))[idx]
+    d_train, d_test = classifim.io.split_train_test(
+            d_all,
+            test_size=0.1,
+            seed=prng.get_int64_seed("split_test"))
+    if train_filename is not None:
+        _isnnn_dataset_save(d_train, train_filename)
+    if test_filename is not None:
+        _isnnn_dataset_save(d_test, test_filename)
+    return d_train, d_test
+
