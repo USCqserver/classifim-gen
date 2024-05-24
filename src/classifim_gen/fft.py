@@ -17,7 +17,7 @@ and then writing the result in the form (1).
 
 import numpy as np
 import functools
-from . import bits
+import classifim.bits
 
 def quspin_conversion(psi):
     """
@@ -54,7 +54,7 @@ def apply_creation(j, psi):
     even_zs = (even_zs & j_right_mask) | ((even_zs & ~j_right_mask) << 1)
 
     zs_left = even_zs >> (j + 1)
-    sign = 1 - ((bits.countbits32(zs_left) & 1) << 1).astype(np.int32)
+    sign = 1 - ((classifim.bits.countbits32(zs_left) & 1) << 1).astype(np.int32)
     res = np.zeros_like(psi)
     res[even_zs + j_mask] = sign * psi[even_zs]
     return res
@@ -83,7 +83,7 @@ def apply_annihilation(j, psi):
     even_zs = (even_zs & j_right_mask) | ((even_zs & ~j_right_mask) << 1)
 
     zs_left = even_zs >> (j + 1)
-    sign = 1 - ((bits.countbits32(zs_left) & 1) << 1).astype(np.int32)
+    sign = 1 - ((classifim.bits.countbits32(zs_left) & 1) << 1).astype(np.int32)
     res = np.zeros_like(psi)
     res[even_zs] = sign * psi[even_zs + j_mask]
     return res
@@ -399,7 +399,7 @@ def _apply_rotation_inplace(rotation, psi):
     if has_mid:
         zs_mid = np.arange(1 << (i1 - i0 - 1), dtype=np.uint32)
         assert psi.shape[1] == len(zs_mid)
-        zs_mid_sign = 1 - ((bits.countbits32(zs_mid) & 1) << 1).astype(np.int32)
+        zs_mid_sign = 1 - ((classifim.bits.countbits32(zs_mid) & 1) << 1).astype(np.int32)
         psi[:, :, :, 1, 0] *= zs_mid_sign[None, :, None]
     # Consider vector (a0, a1)^T = (psi[:, :, :, 0, 1], psi[:, :, :, 1, 0])^T
     # Fix the first 3 coordinates. This vector corresponds to the state
@@ -452,7 +452,7 @@ def apply_permutation_inplace(perm, psi):
         ii = np.arange(j)
         mask = np.sum((1 << ii) * (perm[ii] > perm[j]))
         parity[1<<j:1<<(j+1)] = (
-            parity[0:1<<j] ^ bits.countbits32(mask & zs[:1<<j]))
+            parity[0:1<<j] ^ classifim.bits.countbits32(mask & zs[:1<<j]))
     # Convert parity to sign: sign = (-1)^parity
     parity = 1 - ((parity & 1) << 1).astype(np.int32)
 

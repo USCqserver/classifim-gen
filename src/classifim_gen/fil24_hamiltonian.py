@@ -14,7 +14,7 @@ import os
 import scipy.sparse
 import sys
 from tqdm import tqdm
-from classifim_gen.bits import reverse_bit_pairs_uint32, countbits32, \
+from classifim.bits import reverse_bit_pairs_uint32, countbits32, \
         roll_left, extract_every_second_bit_uint32, \
         spread_to_every_second_bit_uint32
 

@@ -175,21 +175,3 @@ def is_dtype_real_only(dtype):
     is_number = np.issubdtype(dtype, np.floating) or np.issubdtype(dtype, np.integer)
     is_complex = np.issubdtype(dtype, np.complexfloating)
     return is_number and not is_complex
-
-def average_consecutive(a: np.ndarray, axis: int = 0) -> np.ndarray:
-    """
-    Computes the average of consecutive elements along a specified axis.
-
-    Args:
-        a (np.ndarray): Input array.
-        axis (int, optional): The axis along which to compute the average of
-            consecutive elements. Default is 0.
-
-    Returns:
-        np.ndarray: The input array, but with each pair of consecutive elements
-            along the specified axis replaced by their average, hence the size
-            along that axis is reduced by 1.
-    """
-    a = np.moveaxis(a, axis, 0)
-    a = (a[1:] + a[:-1]) / 2
-    return np.moveaxis(a, 0, axis)

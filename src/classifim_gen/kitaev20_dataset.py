@@ -1,5 +1,6 @@
 """Utilities for generating and processing Kitaev20 datasets."""
 
+import classifim_gen.hubbard_hamiltonian
 import numpy as np
 import os
 
@@ -59,4 +60,21 @@ def generate_kitaev20_datasets(
         res.append(cur_res)
     return res
 
+def kitaev20_dataset_save(dataset, filename):
+    """
+    Save a dataset in Kitaev20 format:
+    * one parameter (lambda0),
+    * np.int32 samples.
+    """
+    return classifim_gen.hubbard_hamiltonian.hubbard12_dataset_save(
+        dataset, filename, num_lambdas=1)
 
+def convert_dataset_to_hf(
+        seed, data, train_filename=None, test_filename=None):
+    """
+    Converts Kitaev20 dataset from .npz to format compatible with HuggingFace.
+    """
+    return classifim_gen.hubbard_hamiltonian.convert_dataset_to_hf(
+        seed, data, train_filename=train_filename, test_filename=test_filename,
+        num_lambdas=1, samples_column_name="packed_zs", samples_dtype=None,
+        scalar_keys="all")

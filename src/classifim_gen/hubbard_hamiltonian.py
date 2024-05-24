@@ -2,11 +2,15 @@
 Functions and classes relevant to the Hubbard Hamiltonian on a 12-site lattice.
 """
 
-import numpy as np
-import functools
-import scipy.special
+import classifim.io
 import classifim_gen.hamiltonian as hamiltonian
-from classifim_gen.bits import countbits16
+import classifim_gen.io
+import functools
+import numpy as np
+import pyarrow as pa
+import pyarrow.parquet as pq
+import scipy.special
+from classifim.bits import countbits16
 
 @functools.lru_cache(maxsize=32)
 def compute_choices(n: int, k: int) -> np.ndarray:
@@ -402,3 +406,116 @@ class HubbardParamsConversions:
         lambda0 = tnn0 / (u0 + tnn0)
         lambda1 = tnnn0 / (u0 + tnnn0)
         return lambda0, lambda1
+
+def hubbard12_dataset_save(dataset, filename, num_lambdas=2):
+    """
+    Save the dataset in the format of Hubbard12 dataset.
+
+    Args:
+        dataset (dict): Dictionary with the following keys:
+            - 'lambda0s' (np.ndarray): Array of floats.
+            - 'lambda1s' (np.ndarray): Array of floats.
+            - 'samples' (np.ndarray): Array of np.uint32s
+        filename (str): Path to the output file.
+        num_lambdas: Number of lambda columns in the dataset.
+    """
+    # Sanity check num_lambdas:
+    assert 0 < num_lambdas
+    for i in range(num_lambdas):
+        assert f'lambda{i}s' in dataset
+    assert f'lambda{i+1}s' not in dataset
+
+    if filename.endswith(".parquet"):
+        lambda_fields = [
+            pa.field(f"lambda{i}", pa.float32(), nullable=False)
+            for i in range(num_lambdas)]
+        schema = pa.schema(lambda_fields + [
+                pa.field("sample", pa.int32(), nullable=False)])
+
+        # Remove last 's' from keys:
+        # Naming convention for features stored in npz is to use plural form
+        # (e.g. lambda0s) to distinguish them from metadata (e.g. width).
+        # On the other hand, storing
+        # metadata in parquet columns is not supported (all parquet columns
+        # have the same number of rows), so column name is feature name
+        # (singular form).
+        dataset = {
+            k: dataset[k + 's']
+            for k in ([f'lambda{i}' for i in range(num_lambdas)] + ['sample'])}
+        assert dataset['sample'].dtype in (
+            np.uint32, np.int32, np.int64, np.uint64)
+        if dataset['sample'].dtype != np.int32:
+            assert np.all(dataset['sample'] <= 2**31 - 1)
+            dataset['sample'] = dataset['sample'].astype(np.int32)
+        table = pa.Table.from_pydict(dataset, schema=schema)
+        pq.write_table(table, filename)
+    elif filename.endswith(".npz"):
+        np.savez_compressed(filename, **dataset)
+    else:
+        raise ValueError(f"Unknown extension: {filename}")
+
+def convert_dataset_to_hf(
+        seed, data, train_filename=None, test_filename=None,
+        num_lambdas=2, samples_column_name="zs", samples_dtype=np.uint32,
+        scalar_keys=None):
+    """
+    Converts Hubbard12 dataset from .npz to format compatible with HuggingFace.
+
+    Also works for FIL24 dataset because it uses the same dataset format.
+
+    Arguments after `test_filename` are optional and introduced to allow
+    for code reuse (converting other similar datasets).
+
+    Args:
+        seed (int): Seed for the random number generator.
+        data: either
+            - str: Path to the input .npz file containing the dataset
+                with keys specified below.
+            - dict: Dictionary with the following keys:
+                - 'lambdas' (np.ndarray): Array of floats.
+                - 'zs' (np.ndarray): Array of uint8s or int8s.
+                - [optional] scalar keys in [
+                    'size_per_lambda', 'seed', 'sample_type'].
+        train_filename (str): Path to the output train file.
+        test_filename (str): Path to the output test file.
+    """
+    if isinstance(data, str):
+        filename_in = data
+        with np.load(filename_in) as npz:
+            data = dict(npz)
+    if scalar_keys is None:
+        scalar_keys = ["size_per_lambda", "num_sites", "num_bits"]
+    assert isinstance(scalar_keys, list) or scalar_keys == 'all'
+    samples = data[samples_column_name]
+    num_samples, = samples.shape
+    lambdas = data["lambdas"]
+    assert lambdas.shape == (num_samples, num_lambdas)
+    if samples_dtype is not None:
+        assert samples.dtype == samples_dtype
+    d_all = {
+        **{f"lambda{i}s": lambdas[:, i] for i in range(num_lambdas)},
+        "samples": samples}
+    if scalar_keys == 'all':
+        for k, v in data.items():
+            if isinstance(v, np.ndarray):
+                if v.size == 1:
+                    v = v.item()
+                else:
+                    continue
+            d_all[k] = v
+    else:
+        for key in scalar_keys:
+            if key in data:
+                d_all[key] = data[key]
+    prng = classifim.utils.DeterministicPrng(seed)
+    d_train, d_test = classifim.io.split_train_test(
+            d_all,
+            test_size=0.1,
+            seed=prng.get_int64_seed("split_test"),
+            scalar_keys=scalar_keys)
+    if train_filename is not None:
+        hubbard12_dataset_save(d_train, train_filename, num_lambdas=num_lambdas)
+    if test_filename is not None:
+        hubbard12_dataset_save(d_test, test_filename, num_lambdas=num_lambdas)
+    return d_train, d_test
+

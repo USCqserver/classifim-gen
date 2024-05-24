@@ -1,0 +1,33 @@
+name: classifim
+# To create:
+#   mamba env create --file classifim.yml 2>&1 \
+#     | tee ~/tmp/mamba.log
+channels:
+  - defaults
+  - nvidia # CUDA
+  - pytorch
+  - conda-forge # xtensor
+  - weinbe58 # quspin
+dependencies:
+  - python=3.10.11
+  - filelock=3.9.0
+  - matplotlib=3.7.1
+  - mkl
+  - numpy
+  - openmpi
+  - pandas=1.5.3
+  - pmdarima
+  - pytorch-gpu=1.11.0 # 1.12.1?
+  - pytorch=1.11.0
+  - quspin
+  - requests=2.28.1
+  - scalapack
+  - scikit-learn
+  - scipy=1.10.1
+  - sympy
+  - toml=0.10.2 # optional
+  - tqdm=4.65.0
+  - xtensor=0.24.6
+  - pip
+  - pip:
+    - juliacall

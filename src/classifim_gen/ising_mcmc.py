@@ -1,4 +1,5 @@
 import classifim.utils
+import classifim_gen.io
 import concurrent.futures
 import ctypes
 import functools
@@ -699,7 +700,8 @@ def estimate_fim_1d(ts, energies, cutoff_t=0.5675):
 
 def generate_1d_dataset(
         seed, ts=None, num_passes=70, num_samples_per_pass_ts=2,
-        shuffle=True, **kwargs):
+        num_starting_steps=70, min_outer_steps=30, min_inner_steps=9,
+        shuffle=True, do_sample=True, **kwargs):
     """
     Generates a dataset for ClassiFIM.
 
@@ -712,6 +714,15 @@ def generate_1d_dataset(
             in descending order.
         num_samples_per_pass_ts: Number of samples to generate for each
             pair (pass, t).
+        num_starting_steps: Number of steps to perform after randomly
+            initializing the state.
+        min_outer_steps: Number of steps to perform in the outer loop
+            (before the difficulty adjustment).
+        min_inner_steps: Number of steps to perform in the inner loop
+            (before the difficulty adjustment).
+        shuffle: If True, shuffle the samples.
+        do_sample: If False, skip the sampling (useful when only the FIM
+            is needed).
         **kwargs: The keyword arguments for the IsingMCMC2D constructor.
     """
     if ts is None:
@@ -720,23 +731,22 @@ def generate_1d_dataset(
     mcmc = IsingMCMC2D(seed=prng.get_int64_seed("IsingMCMC2D"), **kwargs)
     samples_per_ts = num_passes * num_samples_per_pass_ts
     height = mcmc.get_height()
-    samples = np.empty(
-        shape=(len(ts), samples_per_ts, height), dtype=np.uint64)
-    min_outer_steps = 30
-    min_inner_steps = 9
+    if do_sample:
+        samples = np.empty(
+            shape=(len(ts), samples_per_ts, height), dtype=np.uint64)
+        # Check manually outside of the loop, so that we can use _get_state:
+        assert samples[0, 0, :].flags['C_CONTIGUOUS']
     num_energies_per_pass_ts = (
         min_outer_steps + num_samples_per_pass_ts * min_inner_steps)
     energies = np.empty(
         shape=(len(ts), num_passes * num_energies_per_pass_ts), dtype=np.int32)
-    # Check manually outside of the loop, so that we can use _get_state:
-    assert samples[0, 0, :].flags['C_CONTIGUOUS']
     e_i = 0
     for pass_j in range(num_passes):
         pass_offset = pass_j * num_samples_per_pass_ts
         pass_offset_e = pass_j * num_energies_per_pass_ts
         mcmc.reset()
         mcmc.adjust_parameters(beta=1 / ts[-1])
-        mcmc.step(70)
+        mcmc.step(num_starting_steps)
         for t_i, t in enumerate(ts[::-1]):
             e_i = pass_offset_e
             mcmc.adjust_parameters(beta=1 / t)
@@ -752,34 +762,38 @@ def generate_1d_dataset(
                     energies_out=energies[t_i, e_i:e_i + min_inner_steps],
                     flip=True)
                 e_i += min_inner_steps
-                # We manually checked preconditions:
-                # * type, dtype, shape: see initialization above.
-                # * C-contiguous: see assert above.
-                mcmc._get_state(
-                    out=samples[t_i, pass_offset + j, :],
-                    shifted=True)
+                if do_sample:
+                    # We manually checked preconditions:
+                    # * type, dtype, shape: see initialization above.
+                    # * C-contiguous: see assert above.
+                    mcmc._get_state(
+                        out=samples[t_i, pass_offset + j, :],
+                        shifted=True)
     assert e_i == energies.shape[1]
 
-    ts1 = np.repeat(ts, samples_per_ts)
-    samples = samples[::-1].reshape(-1, height)
-    if shuffle:
-        rng = np.random.Generator(np.random.PCG64(
-            prng.get_int64_seed("shuffle")))
-        ii = rng.permutation(len(ts1))
-        ts1 = ts1[ii]
-        samples = samples[ii, :]
     energies = energies[::-1]
-    return {
-        "ts": ts1,
-        "packed_zs": samples,
+    res = {
         "seed": seed,
         "shuffled": shuffle,
         "width": mcmc.get_width(),
+        "height": height,
         "_ts": ts,
-        "_ii": ii,
         "_energies": energies,
         "_fim": estimate_fim_1d(ts, energies),
     }
+    if do_sample:
+        ts1 = np.repeat(ts, samples_per_ts)
+        samples = samples[::-1].reshape(-1, height)
+        if shuffle:
+            rng = np.random.Generator(np.random.PCG64(
+                prng.get_int64_seed("shuffle")))
+            ii = rng.permutation(len(ts1))
+            res["_ii"] = ii
+            ts1 = ts1[ii]
+            samples = samples[ii, :]
+        res["ts"] = ts1
+        res["samples"] = samples
+    return res
 
 def isnnn_lambdas_to_params(lambda0, lambda1):
     j_nn = lambda0
@@ -1063,25 +1077,6 @@ def isnnn_generate_data(
         "width": width,
         "height": height}
 
-def _isnnn_dataset_save(dataset, filename):
-    """
-    Helper function for isnnn_generate_datasets.
-    """
-    if filename.endswith(".parquet"):
-        schema = pa.schema([
-            pa.field("lambda0", pa.float32(), nullable=False),
-            pa.field("lambda1", pa.float32(), nullable=False),
-            pa.field(
-                "samples",
-                pa.binary(dataset["samples"].itemsize),
-                nullable=False),
-        ])
-        assert sorted(schema.names) == sorted(dataset.keys())
-        table = pa.Table.from_pydict(dataset, schema=schema)
-        pq.write_table(table, filename)
-        return
-    assert filename.endswith(".npz")
-    np.savez_compressed(filename, **dataset)
 
 def isnnn_generate_datasets(
         seed, data, train_filename=None, test_filename=None):
@@ -1114,18 +1109,138 @@ def isnnn_generate_datasets(
     samples = classifim.io.samples2d_to_bytes(samples, width)
     lambda0s = np.tile(lambda0s[:, None, None], (1, num_lambda1s, num_samples1))
     lambda1s = np.tile(lambda1s[None, :, None], (num_lambda0s, 1, num_samples1))
-    d_all = {"lambda0": lambda0s, "lambda1": lambda1s, "samples": samples}
+    d_all = {
+        "lambda0s": lambda0s,
+        "lambda1s": lambda1s,
+        "samples": samples,
+        "width": width,
+        "height": height,
+        "seed": seed}
     np_rng = np.random.default_rng(prng.get_int64_seed("shufle_test"))
     idx = np_rng.permutation(num_samples)
-    for k in list(d_all.keys()):
+    for k in ['lambda0s', 'lambda1s', 'samples']:
         d_all[k] = d_all[k].reshape((num_samples,))[idx]
     d_train, d_test = classifim.io.split_train_test(
             d_all,
             test_size=0.1,
-            seed=prng.get_int64_seed("split_test"))
+            seed=prng.get_int64_seed("split_test"),
+            scalar_keys=["width", "height", "seed"])
     if train_filename is not None:
-        _isnnn_dataset_save(d_train, train_filename)
+        classifim_gen.io.isnnn_dataset_save(d_train, train_filename)
     if test_filename is not None:
-        _isnnn_dataset_save(d_test, test_filename)
+        classifim_gen.io.isnnn_dataset_save(d_test, test_filename)
     return d_train, d_test
+
+def ising400_tc_summary(
+        ts, fim, n_spins, tc_theory=2 / np.log(1 + 2**0.5), print_=True):
+    """
+    Compute the critical temperature and its uncertainty from FIM values.
+
+    Args:
+        ts: The temperatures at which the FIM values were computed.
+        fim: The FIM values.
+        n_spins: Number of spins (used for printing the summary).
+        tc_theory: The theoretical critical temperature
+            (used for printing the summary).
+        print_: If True, print the summary.
+
+    Returns:
+        Dict with keys:
+            tc: The critical temperature.
+            tc_std: The standard deviation of the critical temperature.
+    """
+    res = {}
+    res["tc"] = tc = np.array([
+        ts[np.argmax(fim[i])] for i in range(fim.shape[0])])
+    res["tc_mean"] = np.mean(tc)
+    res["tc_std"] = np.std(tc)
+    res["tcinv_mean"] = np.mean(1 / tc)
+    res["tcinv_std"] = np.std(1 / tc)
+    res["betac"] = betac = np.array([
+        1 / ts[np.argmax(fim[i] * ts**4)] for i in range(fim.shape[0])])
+    res["betac_mean"] = np.mean(betac)
+    res["betac_std"] = np.std(betac)
+    res["betacinv_mean"] = np.mean(1 / betac)
+    res["betacinv_std"] = np.std(1 / betac)
+    res["num_ds"] = len(tc)
+    if print_:
+        if n_spins is not None:
+            print(f"N = {n_spins}")
+        print(f"Tc = {res['tc_mean']:.3f} ± {res['tc_std']:.3f}; "
+            f"1/βc = {res['betacinv_mean']:.3f} ± {res['betacinv_std']:.3f}"
+            f" (theory: {tc_theory:.3f})")
+        print(f"1/Tc = {res['tcinv_mean']:.4f} ± {res['tcinv_std']:.4f}; "
+            f"βc = {res['betac_mean']:.4f} ± {res['betac_std']:.4f}"
+            f" (theory: {1 / tc_theory:.4f}; num_ds={len(tc)})")
+    return res
+
+
+def ising400_plot_2bands(ax, datasets, set_ylim=True, ymax=None,
+        label=None, print_summary=True, n_sites=None, **kwargs):
+    """
+    A plot of mean and std band of FIM value and the value of its maximum
+    for Ising400 and similar datasets.
+
+    The FIM value is scaled by num_sites.
+
+    Args:
+        ax: The matplotlib axis to plot on.
+        datasets: List of datasets, each of them is a dict (e.g. returned by
+            generate_1d_dataset) with keys "packed_zs", "_ts", "_fim", "width".
+        set_ylim: If True, set the y-axis limits to [0, max(fim_ub)].
+        ymax: Value to be used for y-axis limit and vertical lines
+            (computed if None).
+        label: Label for the plot.
+        print_summary: If True, print the summary about Tc.
+        kwargs: Additional arguments for ax.fill_between and ax.plot.
+
+    Returns:
+        Dict with the following keys:
+            ymax: The maximum value of the upper bound on FIM computed
+                by this function.
+    """
+    if isinstance(datasets, dict):
+        datasets = list(datasets.values())
+    ts = np.array([ds["_ts"] for ds in datasets])
+    ts_mid = (ts[:, 1:] + ts[:, :-1]) / 2
+    assert all(np.array_equal(
+        ts_mid[0], ts_mid[i]) for i in range(1, len(ts_mid)))
+    ts_mid = ts_mid[0]
+    if n_sites is None:
+        n_sites = np.array([
+            ds["width"] * ds["packed_zs"].shape[1] for ds in datasets])
+    elif isinstance(n_sites, int):
+        n_sites = np.full(len(datasets), n_sites)
+    fim = np.array([ds["_fim"] for ds in datasets])
+    fim = fim / n_sites[:, None]
+    fim_mean = np.mean(fim, axis=0)
+    fim_std = np.std(fim, axis=0)
+    fim_lb = fim_mean - fim_std
+    fim_ub = fim_mean + fim_std
+    computed_ymax = max(fim_ub)
+    if ymax is None:
+        ymax = computed_ymax
+    ax.fill_between(ts_mid, fim_lb, fim_ub, alpha=0.3, **kwargs)
+    plot_kwargs = dict(kwargs)
+    if label is not None:
+        plot_kwargs["label"] = label
+    ax.plot(ts_mid, fim_mean, **plot_kwargs)
+
+    tc = np.array([ts_mid[np.argmax(fim[i, :])] for i in range(fim.shape[0])])
+    tc_mean = np.mean(tc)
+    tc_std = np.std(tc)
+    ax.fill_betweenx(
+        [0, ymax], tc_mean - tc_std, tc_mean + tc_std, alpha=0.3, **kwargs)
+    ax.axvline(tc_mean, **kwargs)
+    if set_ylim:
+        ax.set_ylim([0, ymax])
+    ax.set_xlim((np.min(ts), np.max(ts)))
+    ax.set_xlabel("T")
+    ax.set_ylabel("FIM / num_sites")
+    res = {"ymax": ymax}
+    if print_summary:
+        assert np.all(n_sites == n_sites[0])
+        res.update(
+            ising400_tc_summary(ts_mid, fim, n_sites[0], print_=True))
+    return res
 

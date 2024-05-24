@@ -1,0 +1,5 @@
+- Mixed fermion-spin models
+- Multipartitite entanglement
+- Finite-temperature, METTS
+- Entropy density
+- Work folder to tmp
