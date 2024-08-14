@@ -1185,8 +1185,9 @@ def ising400_plot_2bands(ax, datasets, set_ylim=True, ymax=None,
 
     Args:
         ax: The matplotlib axis to plot on.
-        datasets: List of datasets, each of them is a dict (e.g. returned by
-            generate_1d_dataset) with keys "packed_zs", "_ts", "_fim", "width".
+        datasets: Dict with keys "_ts", "_fim" and each value with
+            shape (num_datasets, *). Keys "width" and "packed_zs" are needed
+            if n_sites is None.
         set_ylim: If True, set the y-axis limits to [0, max(fim_ub)].
         ymax: Value to be used for y-axis limit and vertical lines
             (computed if None).
@@ -1199,20 +1200,16 @@ def ising400_plot_2bands(ax, datasets, set_ylim=True, ymax=None,
             ymax: The maximum value of the upper bound on FIM computed
                 by this function.
     """
-    if isinstance(datasets, dict):
-        datasets = list(datasets.values())
-    ts = np.array([ds["_ts"] for ds in datasets])
+    ts = datasets["_ts"]
     ts_mid = (ts[:, 1:] + ts[:, :-1]) / 2
-    assert all(np.array_equal(
-        ts_mid[0], ts_mid[i]) for i in range(1, len(ts_mid)))
+    assert np.all(ts_mid[0, None, ...] == ts_mid[1:, ...])
     ts_mid = ts_mid[0]
     if n_sites is None:
-        n_sites = np.array([
-            ds["width"] * ds["packed_zs"].shape[1] for ds in datasets])
-    elif isinstance(n_sites, int):
-        n_sites = np.full(len(datasets), n_sites)
-    fim = np.array([ds["_fim"] for ds in datasets])
-    fim = fim / n_sites[:, None]
+        assert "packed_zs" in datasets
+        n_sites = datasets["width"] * datasets["packed_zs"].shape[1]
+    if isinstance(n_sites, (int, np.int32, np.int64)):
+        n_sites = np.full(len(datasets["_fim"]), n_sites)
+    fim = datasets["_fim"] / n_sites[:, None]
     fim_mean = np.mean(fim, axis=0)
     fim_std = np.std(fim, axis=0)
     fim_lb = fim_mean - fim_std
@@ -1235,7 +1232,7 @@ def ising400_plot_2bands(ax, datasets, set_ylim=True, ymax=None,
     if set_ylim:
         ax.set_ylim([0, ymax])
     ax.set_xlim((np.min(ts), np.max(ts)))
-    ax.set_xlabel("T")
+    ax.set_xlabel("$T$")
     ax.set_ylabel("FIM / num_sites")
     res = {"ymax": ymax}
     if print_summary:
